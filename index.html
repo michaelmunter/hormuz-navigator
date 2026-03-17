@@ -199,30 +199,51 @@ let timerInterval, seconds, started;
 // Colors for numbers (classic minesweeper)
 const NUM_COLORS = [null, '#0000ff', '#008000', '#ff0000', '#000080', '#800000', '#008080', '#000000', '#808080'];
 
-// BFS shortest path through ocean from left to right edge
-function findOceanPath() {
+// Check if a mine-free path exists from left to right through ocean
+function hasPath() {
+  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
+  const queue = [];
+  for (let r = 0; r < rows; r++) {
+    if (oceanMask[r][0] && !mines[r][0]) {
+      queue.push([r, 0]);
+      visited[r][0] = true;
+    }
+  }
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    if (c === cols - 1) return true;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
+            !visited[nr][nc] && oceanMask[nr][nc] && !mines[nr][nc]) {
+          visited[nr][nc] = true;
+          queue.push([nr, nc]);
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Find a path through mines to carve open (BFS through all ocean, preferring non-mines)
+function findCarvePath() {
   const visited = Array.from({length: rows}, () => Array(cols).fill(false));
   const parent = Array.from({length: rows}, () => Array(cols).fill(null));
   const queue = [];
-
-  // Seed from all ocean cells on left edge
   for (let r = 0; r < rows; r++) {
     if (oceanMask[r][0]) {
       queue.push([r, 0]);
       visited[r][0] = true;
     }
   }
-
   while (queue.length > 0) {
     const [r, c] = queue.shift();
     if (c === cols - 1) {
-      // Trace path back
       const path = [];
       let cur = [r, c];
-      while (cur) {
-        path.push(cur);
-        cur = parent[cur[0]][cur[1]];
-      }
+      while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
       return path;
     }
     for (let dr = -1; dr <= 1; dr++) {
@@ -242,43 +263,28 @@ function findOceanPath() {
 }
 
 function placeMinesWithPath(oceanCells) {
-  // 1. Find a path through the ocean
-  const path = findOceanPath();
-  const protectedSet = new Set();
-
-  if (path) {
-    // Protect path cells and their immediate neighbors (so path stays navigable)
-    for (const [r, c] of path) {
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && oceanMask[nr][nc]) {
-            protectedSet.add(nr * cols + nc);
-          }
-        }
-      }
-    }
-  }
-
-  // 2. Separate ocean cells into placeable and protected
-  const placeable = [];
-  for (const [r, c] of oceanCells) {
-    if (!protectedSet.has(r * cols + c)) {
-      placeable.push([r, c]);
-    }
-  }
-
-  // 3. Shuffle and place mines only on non-protected cells
-  const shuffled = placeable.sort(() => Math.random() - 0.5);
-  const toPlace = Math.min(mineCount, shuffled.length);
-  for (let i = 0; i < toPlace; i++) {
+  // 1. Place mines randomly across all ocean cells
+  const shuffled = oceanCells.slice().sort(() => Math.random() - 0.5);
+  for (let i = 0; i < mineCount; i++) {
     const [r, c] = shuffled[i];
     mines[r][c] = true;
   }
 
-  // Update actual mine count (might be slightly less if not enough placeable cells)
-  mineCount = toPlace;
-  document.getElementById('mineCounter').textContent = String(mineCount).padStart(3, '0');
+  // 2. If no path exists, carve one by removing mines along a route
+  if (!hasPath()) {
+    const path = findCarvePath();
+    if (path) {
+      let removed = 0;
+      for (const [r, c] of path) {
+        if (mines[r][c]) {
+          mines[r][c] = false;
+          removed++;
+        }
+      }
+      mineCount -= removed;
+      document.getElementById('mineCounter').textContent = String(mineCount).padStart(3, '0');
+    }
+  }
 }
 
 mapImg.onload = function() {
