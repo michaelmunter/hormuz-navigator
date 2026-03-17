@@ -1,11 +1,27 @@
-const CACHE = 'hormuz-v1';
+const CACHE = 'hormuz-v12';
 const ASSETS = [
-  '/hormuz-navigator/',
-  '/hormuz-navigator/index.html',
-  '/hormuz-navigator/hormuz.png',
-  '/hormuz-navigator/icon-192.png',
-  '/hormuz-navigator/icon-512.png',
-  '/hormuz-navigator/manifest.json'
+  './',
+  './index.html',
+  './js/zzfx.js',
+  './js/sounds.js',
+  './js/map.js',
+  './js/renderer.js',
+  './js/minesweeper.js',
+  './js/transit.js',
+  './js/input.js',
+  './js/game.js',
+  './hormuz-ocean.png',
+  './hormuz-land.png',
+  './icon-192.png',
+  './icon-512.png',
+  './manifest.json',
+  './sprites/ship.svg',
+  './sprites/shahed.svg',
+  './sprites/missile.svg',
+  './sprites/shahed-exploding.svg',
+  './sprites/missile-blast.svg',
+  './sprites/missile_oceandrop.svg',
+  './sprites/ship-struck.svg'
 ];
 
 self.addEventListener('install', e => {

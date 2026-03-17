@@ -3,11 +3,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Simulate the game's core logic (extracted from index.html)
+// Simulate the game's core logic (extracted from js/ modules).
 // We test the algorithms, not the rendering.
 
 function makeGrid(rows, cols, oceanPattern) {
-  // oceanPattern: 2D array of booleans or a function(r, c) => bool
   const oceanMask = [];
   for (let r = 0; r < rows; r++) {
     oceanMask[r] = [];
@@ -130,6 +129,40 @@ function placeMinesWithPath(rows, cols, oceanMask, mineRatio) {
   return { mines, mineCount };
 }
 
+function findRevealedPath(rows, cols, oceanMask, revealed) {
+  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
+  const parent = Array.from({length: rows}, () => Array(cols).fill(null));
+  const queue = [];
+  for (let r = 0; r < rows; r++) {
+    if (oceanMask[r][0] && revealed[r][0]) {
+      queue.push([r, 0]);
+      visited[r][0] = true;
+    }
+  }
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    if (c === cols - 1) {
+      const path = [];
+      let cur = [r, c];
+      while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
+      return path.reverse();
+    }
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
+            !visited[nr][nc] && oceanMask[nr][nc] && revealed[nr][nc]) {
+          visited[nr][nc] = true;
+          parent[nr][nc] = [r, c];
+          queue.push([nr, nc]);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // --- Tests ---
 
 describe('hasPath', () => {
@@ -142,7 +175,6 @@ describe('hasPath', () => {
   it('returns false when mines block all routes', () => {
     const ocean = makeGrid(3, 5, () => true);
     const mines = initMines(3, 5);
-    // Block column 2 entirely
     for (let r = 0; r < 3; r++) mines[r][2] = true;
     assert.equal(hasPath(3, 5, ocean, mines), false);
   });
@@ -150,15 +182,12 @@ describe('hasPath', () => {
   it('finds diagonal path', () => {
     const ocean = makeGrid(3, 5, () => true);
     const mines = initMines(3, 5);
-    // Block all of col 2 except allow diagonal
     mines[0][2] = true;
     mines[2][2] = true;
-    // Row 1, col 2 is open — diagonal path exists
     assert.equal(hasPath(3, 5, ocean, mines), true);
   });
 
   it('respects land cells', () => {
-    // Land wall in the middle
     const ocean = makeGrid(3, 5, (r, c) => c !== 2);
     const mines = initMines(3, 5);
     assert.equal(hasPath(3, 5, ocean, mines), false);
@@ -188,11 +217,8 @@ describe('computeNumbers', () => {
     mines[0][0] = true;
     mines[2][2] = true;
     const grid = computeNumbers(3, 3, ocean, mines);
-    // Center cell (1,1) should see both mines
     assert.equal(grid[1][1], 2);
-    // (0,1) should see mine at (0,0) only
     assert.equal(grid[0][1], 1);
-    // Mine cells stay 0
     assert.equal(grid[0][0], 0);
   });
 
@@ -201,14 +227,12 @@ describe('computeNumbers', () => {
     const mines = initMines(3, 3);
     mines[0][1] = true;
     const grid = computeNumbers(3, 3, ocean, mines);
-    // Land cell (0,0) stays 0 even though adjacent to mine
     assert.equal(grid[0][0], 0);
   });
 });
 
 describe('placeMinesWithPath', () => {
   it('always produces a solvable board', () => {
-    // Run multiple times to test randomness
     for (let i = 0; i < 50; i++) {
       const ocean = makeGrid(10, 15, () => true);
       const { mines } = placeMinesWithPath(10, 15, ocean, 0.25);
@@ -218,7 +242,6 @@ describe('placeMinesWithPath', () => {
   });
 
   it('handles narrow strait (single row ocean)', () => {
-    // Only middle row is ocean
     const ocean = makeGrid(5, 10, (r) => r === 2);
     const { mines } = placeMinesWithPath(5, 10, ocean, 0.25);
     assert.equal(hasPath(5, 10, ocean, mines), true);
@@ -228,8 +251,38 @@ describe('placeMinesWithPath', () => {
     const ocean = makeGrid(10, 15, () => true);
     const { mineCount } = placeMinesWithPath(10, 15, ocean, 0.25);
     const expected = Math.floor(150 * 0.25);
-    // Should be close to expected (may be slightly less if carving was needed)
     assert.ok(mineCount <= expected, `Too many mines: ${mineCount}`);
     assert.ok(mineCount >= expected - 20, `Too few mines: ${mineCount}`);
+  });
+});
+
+describe('findRevealedPath', () => {
+  it('finds path through fully revealed ocean', () => {
+    const ocean = makeGrid(3, 5, () => true);
+    const revealed = makeGrid(3, 5, () => true);
+    const path = findRevealedPath(3, 5, ocean, revealed);
+    assert.ok(path);
+    assert.deepEqual(path[0], [path[0][0], 0]);
+    assert.deepEqual(path[path.length - 1], [path[path.length - 1][0], 4]);
+  });
+
+  it('returns null when revealed cells do not connect', () => {
+    const ocean = makeGrid(3, 5, () => true);
+    const revealed = makeGrid(3, 5, () => false);
+    revealed[0][0] = true;
+    revealed[0][4] = true;
+    const path = findRevealedPath(3, 5, ocean, revealed);
+    assert.equal(path, null);
+  });
+
+  it('path goes left to right in order', () => {
+    const ocean = makeGrid(3, 5, () => true);
+    const revealed = makeGrid(3, 5, () => true);
+    const path = findRevealedPath(3, 5, ocean, revealed);
+    assert.ok(path);
+    // First element should be on column 0
+    assert.equal(path[0][1], 0);
+    // Last element should be on column 4
+    assert.equal(path[path.length - 1][1], 4);
   });
 });
