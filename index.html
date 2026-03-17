@@ -1,802 +1,1005 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="theme-color" content="#000080">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<title>Hormuz Navigator</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: #c0c0c0;
-  font-family: 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  user-select: none;
-}
-.window {
-  background: #c0c0c0;
-  border: 3px solid;
-  border-color: #fff #808080 #808080 #fff;
-  display: inline-block;
-}
-.title-bar {
-  background: linear-gradient(90deg, #000080, #1084d0);
-  color: white;
-  font-weight: bold;
-  font-size: 13px;
-  padding: 3px 5px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.title-bar img { width: 16px; height: 16px; image-rendering: pixelated; }
-.menu-bar {
-  padding: 2px 5px;
-  font-size: 12px;
-  border-bottom: 1px solid #808080;
-}
-.menu-bar span { padding: 0 5px; cursor: pointer; }
-.menu-bar span:hover { background: #000080; color: white; }
-.game-area {
-  margin: 6px;
-  border: 3px solid;
-  border-color: #808080 #fff #fff #808080;
-  padding: 6px;
-}
-.top-panel {
-  border: 2px solid;
-  border-color: #808080 #fff #fff #808080;
-  background: #c0c0c0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 6px;
-  margin-bottom: 6px;
-}
-.counter {
-  background: #000;
-  color: #f00;
-  font-family: 'Consolas', monospace;
-  font-size: 24px;
-  font-weight: bold;
-  padding: 2px 4px;
-  min-width: 52px;
-  text-align: right;
-  border: 1px solid;
-  border-color: #808080 #fff #fff #808080;
-}
-.face-btn {
-  width: 28px;
-  height: 28px;
-  border: 2px solid;
-  border-color: #fff #808080 #808080 #fff;
-  background: #c0c0c0;
-  font-size: 18px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-.face-btn:active {
-  border-color: #808080 #fff #fff #808080;
-}
-.board-wrap {
-  border: 3px solid;
-  border-color: #808080 #fff #fff #808080;
-  position: relative;
-  overflow: hidden;
-  cursor: default;
-}
-canvas { display: block; }
-#oceanCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
-#gameCanvas { position: relative; z-index: 1; }
-#mapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="theme-color" content="#000080" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <title>Hormuz Navigator</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #c0c0c0;
+        font-family: "MS Sans Serif", "Microsoft Sans Serif", Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        user-select: none;
+      }
+      .window {
+        background: #c0c0c0;
+        border: 3px solid;
+        border-color: #fff #808080 #808080 #fff;
+        display: inline-block;
+      }
+      .title-bar {
+        background: linear-gradient(90deg, #000080, #1084d0);
+        color: white;
+        font-weight: bold;
+        font-size: 13px;
+        padding: 3px 5px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .title-bar img {
+        width: 16px;
+        height: 16px;
+        image-rendering: pixelated;
+      }
+      .menu-bar {
+        padding: 2px 5px;
+        font-size: 12px;
+        border-bottom: 1px solid #808080;
+      }
+      .menu-bar span {
+        padding: 0 5px;
+        cursor: pointer;
+      }
+      .menu-bar span:hover {
+        background: #000080;
+        color: white;
+      }
+      .game-area {
+        margin: 6px;
+        border: 3px solid;
+        border-color: #808080 #fff #fff #808080;
+        padding: 6px;
+      }
+      .top-panel {
+        border: 2px solid;
+        border-color: #808080 #fff #fff #808080;
+        background: #c0c0c0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 6px;
+        margin-bottom: 6px;
+      }
+      .counter {
+        background: #000;
+        color: #f00;
+        font-family: "Consolas", monospace;
+        font-size: 24px;
+        font-weight: bold;
+        padding: 2px 4px;
+        min-width: 52px;
+        text-align: right;
+        border: 1px solid;
+        border-color: #808080 #fff #fff #808080;
+      }
+      .face-btn {
+        width: 28px;
+        height: 28px;
+        border: 2px solid;
+        border-color: #fff #808080 #808080 #fff;
+        background: #c0c0c0;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .face-btn:active {
+        border-color: #808080 #fff #fff #808080;
+      }
+      .board-wrap {
+        border: 3px solid;
+        border-color: #808080 #fff #fff #808080;
+        position: relative;
+        overflow: hidden;
+        cursor: default;
+      }
+      canvas {
+        display: block;
+      }
+      #oceanBgCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+      #gameCanvas {
+        position: relative;
+        z-index: 1;
+      }
+      #oceanOverlayCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        z-index: 2;
+      }
+      #mapCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        z-index: 3;
+      }
 
-.status-bar {
-  margin-top: 6px;
-  padding: 2px 6px;
-  font-size: 11px;
-  color: #222;
-  border: 1px solid;
-  border-color: #808080 #fff #fff #808080;
-  text-align: center;
-}
-.win-msg { color: #006400; font-weight: bold; }
-.lose-msg { color: #8b0000; font-weight: bold; }
+      .status-bar {
+        margin-top: 6px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: #222;
+        border: 1px solid;
+        border-color: #808080 #fff #fff #808080;
+        text-align: center;
+      }
+      .win-msg {
+        color: #006400;
+        font-weight: bold;
+      }
+      .lose-msg {
+        color: #8b0000;
+        font-weight: bold;
+      }
 
-.ad-banner {
-  background: #e0e0e0;
-  border: 1px solid #999;
-  text-align: center;
-  padding: 8px;
-  font-size: 11px;
-  color: #666;
-  margin-top: 8px;
-  min-height: 50px;
-  width: 100%;
-  max-width: 728px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+      .ad-banner {
+        background: #e0e0e0;
+        border: 1px solid #999;
+        text-align: center;
+        padding: 8px;
+        font-size: 11px;
+        color: #666;
+        margin-top: 8px;
+        min-height: 50px;
+        width: 100%;
+        max-width: 728px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
 
-/* Modal overlay */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.4);
-  z-index: 100;
-  justify-content: center;
-  align-items: center;
-}
-.modal-overlay.active { display: flex; }
-.modal {
-  background: #c0c0c0;
-  border: 3px solid;
-  border-color: #fff #808080 #808080 #fff;
-  padding: 20px;
-  text-align: center;
-  max-width: 340px;
-}
-.modal h2 { font-size: 16px; margin-bottom: 10px; }
-.modal p { font-size: 12px; margin-bottom: 12px; line-height: 1.5; }
-.modal button {
-  border: 2px solid;
-  border-color: #fff #808080 #808080 #fff;
-  background: #c0c0c0;
-  padding: 4px 20px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.modal button:active {
-  border-color: #808080 #fff #fff #808080;
-}
-</style>
-</head>
-<body>
-
-<div class="window">
-  <div class="title-bar">
-    <span>&#9775;</span> Hormuz Navigator
-  </div>
-  <div class="menu-bar">
-    <span onclick="newGame()">New</span>
-    <span onclick="showHelp()">Help</span>
-  </div>
-  <div class="game-area">
-    <div class="top-panel">
-      <div class="counter" id="mineCounter">000</div>
-      <button class="face-btn" id="faceBtn" onclick="newGame()">&#128578;</button>
-      <div class="counter" id="timer">000</div>
+      /* Modal overlay */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 100;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal {
+        background: #c0c0c0;
+        border: 3px solid;
+        border-color: #fff #808080 #808080 #fff;
+        padding: 20px;
+        text-align: center;
+        max-width: 340px;
+      }
+      .modal h2 {
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+      .modal p {
+        font-size: 12px;
+        margin-bottom: 12px;
+        line-height: 1.5;
+      }
+      .modal button {
+        border: 2px solid;
+        border-color: #fff #808080 #808080 #fff;
+        background: #c0c0c0;
+        padding: 4px 20px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .modal button:active {
+        border-color: #808080 #fff #fff #808080;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      <div class="title-bar"><span>&#9775;</span> Hormuz Navigator</div>
+      <div class="menu-bar">
+        <span onclick="newGame()">New</span>
+        <span onclick="showHelp()">Help</span>
+      </div>
+      <div class="game-area">
+        <div class="top-panel">
+          <div class="counter" id="mineCounter">000</div>
+          <button class="face-btn" id="faceBtn" onclick="newGame()">
+            &#128578;
+          </button>
+          <div class="counter" id="timer">000</div>
+        </div>
+        <div class="board-wrap" id="boardWrap">
+          <canvas id="oceanBgCanvas"></canvas>
+          <canvas id="gameCanvas"></canvas>
+          <canvas id="oceanOverlayCanvas"></canvas>
+          <canvas id="mapCanvas"></canvas>
+        </div>
+        <div class="status-bar" id="statusBar">
+          Navigate the Strait of Hormuz. Clear a path from left to right!
+        </div>
+      </div>
     </div>
-    <div class="board-wrap" id="boardWrap">
-      <canvas id="oceanCanvas"></canvas>
-      <canvas id="mapCanvas"></canvas>
-      <canvas id="gameCanvas"></canvas>
+    <div class="ad-banner" id="adBanner">
+      <!-- Replace with AdSense/AdMob script when ready -->
+      Ad space - your tanker insurance here
     </div>
-    <div class="status-bar" id="statusBar">Navigate the Strait of Hormuz. Clear a path from left to right!</div>
-  </div>
-</div>
-<div class="ad-banner" id="adBanner">
-  <!-- Replace with AdSense/AdMob script when ready -->
-  Ad space - your tanker insurance here
-</div>
 
-<div class="modal-overlay" id="helpModal">
-  <div class="modal">
-    <h2>Hormuz Navigator</h2>
-    <p>
-      Clear a safe path through the Strait of Hormuz!<br><br>
-      <b>Tap / Left-click</b> to reveal a cell.<br>
-      <b>Long-press / Right-click</b> to flag a mine.<br><br>
-      You win when revealed ocean cells form a connected path from the <b>left edge</b> to the <b>right edge</b> of the strait.<br><br>
-      Gray cells = land (not playable).<br>
-      Numbers show adjacent mines.
-    </p>
-    <button onclick="document.getElementById('helpModal').classList.remove('active')">OK</button>
-  </div>
-</div>
+    <div class="modal-overlay" id="helpModal">
+      <div class="modal">
+        <h2>Hormuz Navigator</h2>
+        <p>
+          Clear a safe path through the Strait of Hormuz!<br /><br />
+          <b>Tap / Left-click</b> to reveal a cell.<br />
+          <b>Long-press / Right-click</b> to flag a mine.<br /><br />
+          You win when revealed ocean cells form a connected path from the
+          <b>left edge</b> to the <b>right edge</b> of the strait.<br /><br />
+          Gray cells = land (not playable).<br />
+          Numbers show adjacent mines.
+        </p>
+        <button
+          onclick="
+            document.getElementById('helpModal').classList.remove('active')
+          "
+        >
+          OK
+        </button>
+      </div>
+    </div>
 
-<script>
-const CELL = 20;
-const MINE_RATIO = 0.25;
+    <script>
+      const CELL = 20;
+      const MINE_RATIO = 0.25;
 
-const mapImg = new Image();
-const oceanImg = new Image();
-mapImg.src = 'hormuz.png';
-oceanImg.src = 'hormuzfilled.png';
+      const mapImg = new Image();
+      const oceanImg = new Image();
+      mapImg.src = "hormuz.png";
+      oceanImg.src = "hormuzfilled.png";
 
-const gameCanvas = document.getElementById('gameCanvas');
-const mapCanvas = document.getElementById('mapCanvas');
-const oceanCanvas = document.getElementById('oceanCanvas');
-const gctx = gameCanvas.getContext('2d');
-const mctx = mapCanvas.getContext('2d');
-const octx = oceanCanvas.getContext('2d');
+      const gameCanvas = document.getElementById("gameCanvas");
+      const mapCanvas = document.getElementById("mapCanvas");
+      const oceanBgCanvas = document.getElementById("oceanBgCanvas");
+      const oceanOverlayCanvas = document.getElementById("oceanOverlayCanvas");
+      const gctx = gameCanvas.getContext("2d");
+      const mctx = mapCanvas.getContext("2d");
+      const obctx = oceanBgCanvas.getContext("2d");
+      const ooctx = oceanOverlayCanvas.getContext("2d");
 
-let cols, rows, grid, oceanMask;
-let mines, revealed, flagged, gameOver, gameWon, mineCount, flagCount;
-let timerInterval, seconds, started;
+      let cols, rows, grid, oceanMask;
+      let mines, revealed, flagged, gameOver, gameWon, mineCount, flagCount;
+      let timerInterval, seconds, started;
 
-// Colors for numbers (classic minesweeper)
-const NUM_COLORS = [null, '#0000ff', '#008000', '#ff0000', '#000080', '#800000', '#008080', '#000000', '#808080'];
+      // Colors for numbers (classic minesweeper)
+      const NUM_COLORS = [
+        null,
+        "#0000ff",
+        "#008000",
+        "#ff0000",
+        "#000080",
+        "#800000",
+        "#008080",
+        "#000000",
+        "#808080",
+      ];
 
-// Check if a mine-free path exists from left to right through ocean
-function hasPath() {
-  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
-  const queue = [];
-  for (let r = 0; r < rows; r++) {
-    if (oceanMask[r][0] && !mines[r][0]) {
-      queue.push([r, 0]);
-      visited[r][0] = true;
-    }
-  }
-  while (queue.length > 0) {
-    const [r, c] = queue.shift();
-    if (c === cols - 1) return true;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const nr = r + dr, nc = c + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-            !visited[nr][nc] && oceanMask[nr][nc] && !mines[nr][nc]) {
-          visited[nr][nc] = true;
-          queue.push([nr, nc]);
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// Find a path through mines to carve open (BFS through all ocean, preferring non-mines)
-function findCarvePath() {
-  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
-  const parent = Array.from({length: rows}, () => Array(cols).fill(null));
-  const queue = [];
-  for (let r = 0; r < rows; r++) {
-    if (oceanMask[r][0]) {
-      queue.push([r, 0]);
-      visited[r][0] = true;
-    }
-  }
-  while (queue.length > 0) {
-    const [r, c] = queue.shift();
-    if (c === cols - 1) {
-      const path = [];
-      let cur = [r, c];
-      while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
-      return path;
-    }
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const nr = r + dr, nc = c + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-            !visited[nr][nc] && oceanMask[nr][nc]) {
-          visited[nr][nc] = true;
-          parent[nr][nc] = [r, c];
-          queue.push([nr, nc]);
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function placeMinesWithPath(oceanCells) {
-  // 1. Place mines randomly across all ocean cells
-  const shuffled = oceanCells.slice().sort(() => Math.random() - 0.5);
-  for (let i = 0; i < mineCount; i++) {
-    const [r, c] = shuffled[i];
-    mines[r][c] = true;
-  }
-
-  // 2. If no path exists, carve one by removing mines along a route
-  if (!hasPath()) {
-    const path = findCarvePath();
-    if (path) {
-      let removed = 0;
-      for (const [r, c] of path) {
-        if (mines[r][c]) {
-          mines[r][c] = false;
-          removed++;
-        }
-      }
-      mineCount -= removed;
-      document.getElementById('mineCounter').textContent = String(mineCount).padStart(3, '0');
-    }
-  }
-}
-
-let imagesLoaded = 0;
-function onImageLoad() {
-  imagesLoaded++;
-  if (imagesLoaded < 2) return;
-  initGame();
-}
-mapImg.onload = onImageLoad;
-oceanImg.onload = onImageLoad;
-
-function initGame() {
-  // Scale image to fit reasonably on screen
-  const maxW = Math.min(window.innerWidth - 60, 1200);
-  const maxH = Math.min(window.innerHeight - 160, 750);
-  const scale = Math.min(maxW / mapImg.width, maxH / mapImg.height);
-  const w = Math.floor(mapImg.width * scale);
-  const h = Math.floor(mapImg.height * scale);
-
-  cols = Math.floor(w / CELL);
-  rows = Math.floor(h / CELL);
-  const canvasW = cols * CELL;
-  const canvasH = rows * CELL;
-
-  gameCanvas.width = mapCanvas.width = oceanCanvas.width = canvasW;
-  gameCanvas.height = mapCanvas.height = oceanCanvas.height = canvasH;
-  document.getElementById('boardWrap').style.width = canvasW + 'px';
-  document.getElementById('boardWrap').style.height = canvasH + 'px';
-
-  // Draw map to hidden canvas to sample transparency
-  const tmp = document.createElement('canvas');
-  tmp.width = canvasW;
-  tmp.height = canvasH;
-  const tctx = tmp.getContext('2d');
-  tctx.drawImage(mapImg, 0, 0, canvasW, canvasH);
-  const imgData = tctx.getImageData(0, 0, canvasW, canvasH);
-
-  // Build ocean mask: cell is ocean if majority of its pixels are transparent
-  oceanMask = [];
-  for (let r = 0; r < rows; r++) {
-    oceanMask[r] = [];
-    for (let c = 0; c < cols; c++) {
-      let transparent = 0, total = 0;
-      for (let py = r * CELL + 2; py < (r + 1) * CELL - 2; py++) {
-        for (let px = c * CELL + 2; px < (c + 1) * CELL - 2; px++) {
-          const idx = (py * canvasW + px) * 4;
-          if (imgData.data[idx + 3] < 128) transparent++;
-          total++;
-        }
-      }
-      oceanMask[r][c] = transparent / total > 0.5;
-    }
-  }
-
-  // Layer 1: ocean satellite at low opacity (visible through transparent game cells)
-  octx.globalAlpha = 0.3;
-  octx.drawImage(oceanImg, 0, 0, canvasW, canvasH);
-  octx.globalAlpha = 1.0;
-
-  // Layer 2: land satellite at full opacity (transparent ocean lets layer 1 show through)
-  mctx.drawImage(mapImg, 0, 0, canvasW, canvasH);
-
-  newGame();
-}
-
-function newGame() {
-  gameOver = false;
-  gameWon = false;
-  started = false;
-  seconds = 0;
-  flagCount = 0;
-  clearInterval(timerInterval);
-  document.getElementById('timer').textContent = '000';
-  document.getElementById('faceBtn').innerHTML = '&#128578;';
-  document.getElementById('statusBar').textContent = 'Navigate the Strait of Hormuz. Clear a path from left to right!';
-  document.getElementById('statusBar').className = 'status-bar';
-
-  // Count ocean cells
-  let oceanCells = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (oceanMask[r][c]) oceanCells.push([r, c]);
-    }
-  }
-
-  mineCount = Math.floor(oceanCells.length * MINE_RATIO);
-  document.getElementById('mineCounter').textContent = String(mineCount).padStart(3, '0');
-
-  // Init grid
-  grid = [];
-  mines = [];
-  revealed = [];
-  flagged = [];
-  for (let r = 0; r < rows; r++) {
-    grid[r] = [];
-    mines[r] = [];
-    revealed[r] = [];
-    flagged[r] = [];
-    for (let c = 0; c < cols; c++) {
-      grid[r][c] = 0;
-      mines[r][c] = false;
-      revealed[r][c] = false;
-      flagged[r][c] = false;
-    }
-  }
-
-  // Place mines with guaranteed path
-  placeMinesWithPath(oceanCells);
-
-  // Compute numbers
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (!oceanMask[r][c] || mines[r][c]) continue;
-      let count = 0;
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && mines[nr][nc]) count++;
-        }
-      }
-      grid[r][c] = count;
-    }
-  }
-
-  drawBoard();
-}
-
-function drawBoard() {
-  gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      drawCell(r, c);
-    }
-  }
-}
-
-function drawCell(r, c) {
-  const x = c * CELL, y = r * CELL;
-
-  if (!oceanMask[r][c]) {
-    // Land cell - transparent so map shows through
-    gctx.clearRect(x, y, CELL, CELL);
-    return;
-  }
-
-  if (revealed[r][c]) {
-    // Sunken cell
-    gctx.fillStyle = '#c0c0c0';
-    gctx.fillRect(x, y, CELL, CELL);
-    gctx.strokeStyle = '#808080';
-    gctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
-
-    if (mines[r][c]) {
-      // Mine - draw red bg + mine
-      if (revealed[r][c] === 'boom') {
-        gctx.fillStyle = '#ff0000';
-        gctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
-      }
-      drawMine(x, y);
-    } else if (grid[r][c] > 0) {
-      gctx.fillStyle = NUM_COLORS[grid[r][c]] || '#000';
-      gctx.font = 'bold 13px "Consolas", monospace';
-      gctx.textAlign = 'center';
-      gctx.textBaseline = 'middle';
-      gctx.fillText(grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
-    }
-  } else {
-    // Raised cell
-    gctx.fillStyle = '#c0c0c0';
-    gctx.fillRect(x, y, CELL, CELL);
-    // 3D border
-    gctx.fillStyle = '#fff';
-    gctx.fillRect(x, y, CELL, 2);
-    gctx.fillRect(x, y, 2, CELL);
-    gctx.fillStyle = '#808080';
-    gctx.fillRect(x + CELL - 2, y, 2, CELL);
-    gctx.fillRect(x, y + CELL - 2, CELL, 2);
-
-    if (flagged[r][c]) {
-      drawFlag(x, y);
-    }
-
-    // If game over and this was a mine we didn't flag, show it
-    if (gameOver && mines[r][c] && !flagged[r][c]) {
-      gctx.fillStyle = '#c0c0c0';
-      gctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
-      drawMine(x, y);
-    }
-    // If game over and flagged but not a mine, show X
-    if (gameOver && flagged[r][c] && !mines[r][c]) {
-      gctx.fillStyle = '#c0c0c0';
-      gctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
-      drawMine(x, y);
-      gctx.strokeStyle = '#ff0000';
-      gctx.lineWidth = 2;
-      gctx.beginPath();
-      gctx.moveTo(x + 4, y + 4);
-      gctx.lineTo(x + CELL - 4, y + CELL - 4);
-      gctx.moveTo(x + CELL - 4, y + 4);
-      gctx.lineTo(x + 4, y + CELL - 4);
-      gctx.stroke();
-      gctx.lineWidth = 1;
-    }
-  }
-}
-
-function drawMine(x, y) {
-  const cx = x + CELL / 2, cy = y + CELL / 2;
-  gctx.fillStyle = '#000';
-  gctx.beginPath();
-  gctx.arc(cx, cy, 5, 0, Math.PI * 2);
-  gctx.fill();
-  // Spikes
-  gctx.strokeStyle = '#000';
-  gctx.lineWidth = 1.5;
-  for (let a = 0; a < 4; a++) {
-    const angle = (a * Math.PI) / 4;
-    gctx.beginPath();
-    gctx.moveTo(cx + Math.cos(angle) * 3, cy + Math.sin(angle) * 3);
-    gctx.lineTo(cx + Math.cos(angle) * 7, cy + Math.sin(angle) * 7);
-    gctx.stroke();
-  }
-  gctx.lineWidth = 1;
-  // Highlight
-  gctx.fillStyle = '#fff';
-  gctx.fillRect(cx - 2, cy - 2, 2, 2);
-}
-
-function drawFlag(x, y) {
-  const cx = x + CELL / 2;
-  // Pole
-  gctx.fillStyle = '#000';
-  gctx.fillRect(cx - 1, y + 4, 2, CELL - 8);
-  // Flag
-  gctx.fillStyle = '#ff0000';
-  gctx.beginPath();
-  gctx.moveTo(cx + 1, y + 4);
-  gctx.lineTo(cx + 7, y + 7);
-  gctx.lineTo(cx + 1, y + 10);
-  gctx.fill();
-  // Base
-  gctx.fillStyle = '#000';
-  gctx.fillRect(cx - 4, y + CELL - 5, 8, 2);
-  gctx.fillRect(cx - 3, y + CELL - 7, 6, 2);
-}
-
-function revealCell(r, c) {
-  if (r < 0 || r >= rows || c < 0 || c >= cols) return;
-  if (!oceanMask[r][c] || revealed[r][c] || flagged[r][c]) return;
-
-  revealed[r][c] = true;
-  drawCell(r, c);
-
-  // Flood fill for empty cells
-  if (grid[r][c] === 0 && !mines[r][c]) {
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        revealCell(r + dr, c + dc);
-      }
-    }
-  }
-}
-
-function checkWin() {
-  // BFS: can we go from any revealed ocean cell on left edge to right edge?
-  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
-  const queue = [];
-
-  // Seed: revealed ocean cells on the left edge
-  for (let r = 0; r < rows; r++) {
-    if (oceanMask[r][0] && revealed[r][0]) {
-      queue.push([r, 0]);
-      visited[r][0] = true;
-    }
-  }
-
-  while (queue.length > 0) {
-    const [r, c] = queue.shift();
-    if (c === cols - 1) return true; // Reached right edge!
-
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const nr = r + dr, nc = c + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-            !visited[nr][nc] && oceanMask[nr][nc] && revealed[nr][nc]) {
-          visited[nr][nc] = true;
-          queue.push([nr, nc]);
-        }
-      }
-    }
-  }
-  return false;
-}
-
-function onGameOver(r, c) {
-  gameOver = true;
-  clearInterval(timerInterval);
-  revealed[r][c] = 'boom';
-  document.getElementById('faceBtn').innerHTML = '&#128565;';
-  document.getElementById('statusBar').textContent = 'BOOM! Ship sunk. Try again.';
-  document.getElementById('statusBar').className = 'status-bar lose-msg';
-
-  // Reveal all mines
-  for (let rr = 0; rr < rows; rr++) {
-    for (let cc = 0; cc < cols; cc++) {
-      if (mines[rr][cc] || (flagged[rr][cc] && !mines[rr][cc])) {
-        drawCell(rr, cc);
-      }
-    }
-  }
-}
-
-function onWin() {
-  gameWon = true;
-  gameOver = true;
-  clearInterval(timerInterval);
-  document.getElementById('faceBtn').innerHTML = '&#128526;';
-  document.getElementById('statusBar').textContent = 'You navigated the Strait! Safe passage!';
-  document.getElementById('statusBar').className = 'status-bar win-msg';
-}
-
-// Input handling
-gameCanvas.addEventListener('mousedown', function(e) {
-  if (gameOver) return;
-  const rect = gameCanvas.getBoundingClientRect();
-  const c = Math.floor((e.clientX - rect.left) / CELL);
-  const r = Math.floor((e.clientY - rect.top) / CELL);
-  if (r < 0 || r >= rows || c < 0 || c >= cols || !oceanMask[r][c]) return;
-
-  if (e.button === 2) {
-    // Right click - flag
-    e.preventDefault();
-    if (revealed[r][c]) return;
-    flagged[r][c] = !flagged[r][c];
-    flagCount += flagged[r][c] ? 1 : -1;
-    document.getElementById('mineCounter').textContent = String(Math.max(0, mineCount - flagCount)).padStart(3, '0');
-    drawCell(r, c);
-    return;
-  }
-
-  if (e.button !== 0) return;
-  if (flagged[r][c]) return;
-
-  // First click safety: ensure first click is not a mine
-  if (!started) {
-    started = true;
-    if (mines[r][c]) {
-      mines[r][c] = false;
-      // Place mine elsewhere
-      for (let rr = 0; rr < rows; rr++) {
-        for (let cc = 0; cc < cols; cc++) {
-          if (oceanMask[rr][cc] && !mines[rr][cc] && !(rr === r && cc === c)) {
-            // Not adjacent to first click
-            if (Math.abs(rr - r) > 1 || Math.abs(cc - c) > 1) {
-              mines[rr][cc] = true;
-              break;
-            }
+      // Check if a mine-free path exists from left to right through ocean
+      function hasPath() {
+        const visited = Array.from({ length: rows }, () =>
+          Array(cols).fill(false),
+        );
+        const queue = [];
+        for (let r = 0; r < rows; r++) {
+          if (oceanMask[r][0] && !mines[r][0]) {
+            queue.push([r, 0]);
+            visited[r][0] = true;
           }
         }
-        if (!mines[r][c]) break;
-      }
-      // Recompute numbers
-      for (let rr = 0; rr < rows; rr++) {
-        for (let cc = 0; cc < cols; cc++) {
-          if (!oceanMask[rr][cc] || mines[rr][cc]) continue;
-          let count = 0;
+        while (queue.length > 0) {
+          const [r, c] = queue.shift();
+          if (c === cols - 1) return true;
           for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
-              const nr = rr + dr, nc = cc + dc;
-              if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && mines[nr][nc]) count++;
-            }
-          }
-          grid[rr][cc] = count;
-        }
-      }
-    }
-    timerInterval = setInterval(() => {
-      seconds++;
-      document.getElementById('timer').textContent = String(Math.min(seconds, 999)).padStart(3, '0');
-    }, 1000);
-  }
-
-  if (revealed[r][c]) {
-    // Chord: if number matches adjacent flags, reveal adjacent
-    if (grid[r][c] > 0) {
-      let adjFlags = 0;
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && flagged[nr][nc]) adjFlags++;
-        }
-      }
-      if (adjFlags === grid[r][c]) {
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            const nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !flagged[nr][nc] && !revealed[nr][nc] && oceanMask[nr][nc]) {
-              if (mines[nr][nc]) { onGameOver(nr, nc); return; }
-              revealCell(nr, nc);
+              if (dr === 0 && dc === 0) continue;
+              const nr = r + dr,
+                nc = c + dc;
+              if (
+                nr >= 0 &&
+                nr < rows &&
+                nc >= 0 &&
+                nc < cols &&
+                !visited[nr][nc] &&
+                oceanMask[nr][nc] &&
+                !mines[nr][nc]
+              ) {
+                visited[nr][nc] = true;
+                queue.push([nr, nc]);
+              }
             }
           }
         }
+        return false;
       }
-    }
-    if (!gameOver && checkWin()) onWin();
-    return;
-  }
 
-  if (mines[r][c]) {
-    onGameOver(r, c);
-    return;
-  }
+      // Find a path through mines to carve open (BFS through all ocean, preferring non-mines)
+      function findCarvePath() {
+        const visited = Array.from({ length: rows }, () =>
+          Array(cols).fill(false),
+        );
+        const parent = Array.from({ length: rows }, () =>
+          Array(cols).fill(null),
+        );
+        const queue = [];
+        for (let r = 0; r < rows; r++) {
+          if (oceanMask[r][0]) {
+            queue.push([r, 0]);
+            visited[r][0] = true;
+          }
+        }
+        while (queue.length > 0) {
+          const [r, c] = queue.shift();
+          if (c === cols - 1) {
+            const path = [];
+            let cur = [r, c];
+            while (cur) {
+              path.push(cur);
+              cur = parent[cur[0]][cur[1]];
+            }
+            return path;
+          }
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nr = r + dr,
+                nc = c + dc;
+              if (
+                nr >= 0 &&
+                nr < rows &&
+                nc >= 0 &&
+                nc < cols &&
+                !visited[nr][nc] &&
+                oceanMask[nr][nc]
+              ) {
+                visited[nr][nc] = true;
+                parent[nr][nc] = [r, c];
+                queue.push([nr, nc]);
+              }
+            }
+          }
+        }
+        return null;
+      }
 
-  revealCell(r, c);
-  if (checkWin()) onWin();
-});
+      function placeMinesWithPath(oceanCells) {
+        // 1. Place mines randomly across all ocean cells
+        const shuffled = oceanCells.slice().sort(() => Math.random() - 0.5);
+        for (let i = 0; i < mineCount; i++) {
+          const [r, c] = shuffled[i];
+          mines[r][c] = true;
+        }
 
-gameCanvas.addEventListener('contextmenu', e => e.preventDefault());
+        // 2. If no path exists, carve one by removing mines along a route
+        if (!hasPath()) {
+          const path = findCarvePath();
+          if (path) {
+            let removed = 0;
+            for (const [r, c] of path) {
+              if (mines[r][c]) {
+                mines[r][c] = false;
+                removed++;
+              }
+            }
+            mineCount -= removed;
+            document.getElementById("mineCounter").textContent = String(
+              mineCount,
+            ).padStart(3, "0");
+          }
+        }
+      }
 
-// Touch support: tap to reveal, long-press to flag
-let touchTimer = null;
-let touchMoved = false;
+      let imagesLoaded = 0;
+      function onImageLoad() {
+        imagesLoaded++;
+        if (imagesLoaded < 2) return;
+        initGame();
+      }
+      mapImg.onload = onImageLoad;
+      oceanImg.onload = onImageLoad;
 
-gameCanvas.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  touchMoved = false;
-  const touch = e.touches[0];
-  const rect = gameCanvas.getBoundingClientRect();
-  const c = Math.floor((touch.clientX - rect.left) / CELL);
-  const r = Math.floor((touch.clientY - rect.top) / CELL);
+      function initGame() {
+        // Scale image to fit reasonably on screen
+        const maxW = Math.min(window.innerWidth - 60, 1200);
+        const maxH = Math.min(window.innerHeight - 160, 750);
+        const scale = Math.min(maxW / mapImg.width, maxH / mapImg.height);
+        const w = Math.floor(mapImg.width * scale);
+        const h = Math.floor(mapImg.height * scale);
 
-  touchTimer = setTimeout(() => {
-    touchTimer = null;
-    if (touchMoved) return;
-    // Long press = flag
-    if (r >= 0 && r < rows && c >= 0 && c < cols && oceanMask[r][c] && !revealed[r][c] && !gameOver) {
-      flagged[r][c] = !flagged[r][c];
-      flagCount += flagged[r][c] ? 1 : -1;
-      document.getElementById('mineCounter').textContent = String(Math.max(0, mineCount - flagCount)).padStart(3, '0');
-      drawCell(r, c);
-    }
-  }, 400);
-}, {passive: false});
+        cols = Math.floor(w / CELL);
+        rows = Math.floor(h / CELL);
+        const canvasW = cols * CELL;
+        const canvasH = rows * CELL;
 
-gameCanvas.addEventListener('touchmove', function() {
-  touchMoved = true;
-  if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
-}, {passive: true});
+        gameCanvas.width = mapCanvas.width = oceanBgCanvas.width = oceanOverlayCanvas.width = canvasW;
+        gameCanvas.height = mapCanvas.height = oceanBgCanvas.height = oceanOverlayCanvas.height = canvasH;
+        document.getElementById("boardWrap").style.width = canvasW + "px";
+        document.getElementById("boardWrap").style.height = canvasH + "px";
 
-gameCanvas.addEventListener('touchend', function(e) {
-  if (touchTimer) {
-    clearTimeout(touchTimer);
-    touchTimer = null;
-    if (!touchMoved) {
-      // Short tap = left click
-      const touch = e.changedTouches[0];
-      const rect = gameCanvas.getBoundingClientRect();
-      const synth = new MouseEvent('mousedown', {
-        clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true
+        // Draw map to hidden canvas to sample transparency
+        const tmp = document.createElement("canvas");
+        tmp.width = canvasW;
+        tmp.height = canvasH;
+        const tctx = tmp.getContext("2d");
+        tctx.drawImage(mapImg, 0, 0, canvasW, canvasH);
+        const imgData = tctx.getImageData(0, 0, canvasW, canvasH);
+
+        // Build ocean mask: cell is ocean if majority of its pixels are transparent
+        oceanMask = [];
+        for (let r = 0; r < rows; r++) {
+          oceanMask[r] = [];
+          for (let c = 0; c < cols; c++) {
+            let transparent = 0,
+              total = 0;
+            for (let py = r * CELL + 2; py < (r + 1) * CELL - 2; py++) {
+              for (let px = c * CELL + 2; px < (c + 1) * CELL - 2; px++) {
+                const idx = (py * canvasW + px) * 4;
+                if (imgData.data[idx + 3] < 128) transparent++;
+                total++;
+              }
+            }
+            oceanMask[r][c] = transparent / total > 0.5;
+          }
+        }
+
+        // Layer 1: ocean background at full opacity (base layer for clean coastline)
+        obctx.drawImage(oceanImg, 0, 0, canvasW, canvasH);
+
+        // Layer 3: ocean overlay at reduced opacity (tints game cells with ocean color)
+        ooctx.globalAlpha = 0.5;
+        ooctx.drawImage(oceanImg, 0, 0, canvasW, canvasH);
+        ooctx.globalAlpha = 1.0;
+
+        // Layer 4: land at full opacity (covers everything on land areas)
+        mctx.drawImage(mapImg, 0, 0, canvasW, canvasH);
+
+        newGame();
+      }
+
+      function newGame() {
+        gameOver = false;
+        gameWon = false;
+        started = false;
+        seconds = 0;
+        flagCount = 0;
+        clearInterval(timerInterval);
+        document.getElementById("timer").textContent = "000";
+        document.getElementById("faceBtn").innerHTML = "&#128578;";
+        document.getElementById("statusBar").textContent =
+          "Navigate the Strait of Hormuz. Clear a path from left to right!";
+        document.getElementById("statusBar").className = "status-bar";
+
+        // Count ocean cells
+        let oceanCells = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (oceanMask[r][c]) oceanCells.push([r, c]);
+          }
+        }
+
+        mineCount = Math.floor(oceanCells.length * MINE_RATIO);
+        document.getElementById("mineCounter").textContent = String(
+          mineCount,
+        ).padStart(3, "0");
+
+        // Init grid
+        grid = [];
+        mines = [];
+        revealed = [];
+        flagged = [];
+        for (let r = 0; r < rows; r++) {
+          grid[r] = [];
+          mines[r] = [];
+          revealed[r] = [];
+          flagged[r] = [];
+          for (let c = 0; c < cols; c++) {
+            grid[r][c] = 0;
+            mines[r][c] = false;
+            revealed[r][c] = false;
+            flagged[r][c] = false;
+          }
+        }
+
+        // Place mines with guaranteed path
+        placeMinesWithPath(oceanCells);
+
+        // Compute numbers
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (!oceanMask[r][c] || mines[r][c]) continue;
+            let count = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                const nr = r + dr,
+                  nc = c + dc;
+                if (
+                  nr >= 0 &&
+                  nr < rows &&
+                  nc >= 0 &&
+                  nc < cols &&
+                  mines[nr][nc]
+                )
+                  count++;
+              }
+            }
+            grid[r][c] = count;
+          }
+        }
+
+        drawBoard();
+      }
+
+      function drawBoard() {
+        gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            drawCell(r, c);
+          }
+        }
+      }
+
+      function drawCell(r, c) {
+        const x = c * CELL,
+          y = r * CELL;
+
+        if (!oceanMask[r][c]) {
+          // Land cell - transparent so map shows through
+          gctx.clearRect(x, y, CELL, CELL);
+          return;
+        }
+
+        if (revealed[r][c]) {
+          // Sunken cell
+          gctx.fillStyle = "#c0c0c0";
+          gctx.fillRect(x, y, CELL, CELL);
+          gctx.strokeStyle = "#808080";
+          gctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
+
+          if (mines[r][c]) {
+            // Mine - draw red bg + mine
+            if (revealed[r][c] === "boom") {
+              gctx.fillStyle = "#ff0000";
+              gctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+            }
+            drawMine(x, y);
+          } else if (grid[r][c] > 0) {
+            gctx.fillStyle = NUM_COLORS[grid[r][c]] || "#000";
+            gctx.font = 'bold 13px "Consolas", monospace';
+            gctx.textAlign = "center";
+            gctx.textBaseline = "middle";
+            gctx.fillText(grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
+          }
+        } else {
+          // Raised cell
+          gctx.fillStyle = "#c0c0c0";
+          gctx.fillRect(x, y, CELL, CELL);
+          // 3D border
+          gctx.fillStyle = "#fff";
+          gctx.fillRect(x, y, CELL, 2);
+          gctx.fillRect(x, y, 2, CELL);
+          gctx.fillStyle = "#808080";
+          gctx.fillRect(x + CELL - 2, y, 2, CELL);
+          gctx.fillRect(x, y + CELL - 2, CELL, 2);
+
+          if (flagged[r][c]) {
+            drawFlag(x, y);
+          }
+
+          // If game over and this was a mine we didn't flag, show it
+          if (gameOver && mines[r][c] && !flagged[r][c]) {
+            gctx.fillStyle = "#c0c0c0";
+            gctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+            drawMine(x, y);
+          }
+          // If game over and flagged but not a mine, show X
+          if (gameOver && flagged[r][c] && !mines[r][c]) {
+            gctx.fillStyle = "#c0c0c0";
+            gctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+            drawMine(x, y);
+            gctx.strokeStyle = "#ff0000";
+            gctx.lineWidth = 2;
+            gctx.beginPath();
+            gctx.moveTo(x + 4, y + 4);
+            gctx.lineTo(x + CELL - 4, y + CELL - 4);
+            gctx.moveTo(x + CELL - 4, y + 4);
+            gctx.lineTo(x + 4, y + CELL - 4);
+            gctx.stroke();
+            gctx.lineWidth = 1;
+          }
+        }
+      }
+
+      function drawMine(x, y) {
+        const cx = x + CELL / 2,
+          cy = y + CELL / 2;
+        gctx.fillStyle = "#000";
+        gctx.beginPath();
+        gctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        gctx.fill();
+        // Spikes
+        gctx.strokeStyle = "#000";
+        gctx.lineWidth = 1.5;
+        for (let a = 0; a < 4; a++) {
+          const angle = (a * Math.PI) / 4;
+          gctx.beginPath();
+          gctx.moveTo(cx + Math.cos(angle) * 3, cy + Math.sin(angle) * 3);
+          gctx.lineTo(cx + Math.cos(angle) * 7, cy + Math.sin(angle) * 7);
+          gctx.stroke();
+        }
+        gctx.lineWidth = 1;
+        // Highlight
+        gctx.fillStyle = "#fff";
+        gctx.fillRect(cx - 2, cy - 2, 2, 2);
+      }
+
+      function drawFlag(x, y) {
+        const cx = x + CELL / 2;
+        // Pole
+        gctx.fillStyle = "#000";
+        gctx.fillRect(cx - 1, y + 4, 2, CELL - 8);
+        // Flag
+        gctx.fillStyle = "#ff0000";
+        gctx.beginPath();
+        gctx.moveTo(cx + 1, y + 4);
+        gctx.lineTo(cx + 7, y + 7);
+        gctx.lineTo(cx + 1, y + 10);
+        gctx.fill();
+        // Base
+        gctx.fillStyle = "#000";
+        gctx.fillRect(cx - 4, y + CELL - 5, 8, 2);
+        gctx.fillRect(cx - 3, y + CELL - 7, 6, 2);
+      }
+
+      function revealCell(r, c) {
+        if (r < 0 || r >= rows || c < 0 || c >= cols) return;
+        if (!oceanMask[r][c] || revealed[r][c] || flagged[r][c]) return;
+
+        revealed[r][c] = true;
+        drawCell(r, c);
+
+        // Flood fill for empty cells
+        if (grid[r][c] === 0 && !mines[r][c]) {
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              revealCell(r + dr, c + dc);
+            }
+          }
+        }
+      }
+
+      function checkWin() {
+        // BFS: can we go from any revealed ocean cell on left edge to right edge?
+        const visited = Array.from({ length: rows }, () =>
+          Array(cols).fill(false),
+        );
+        const queue = [];
+
+        // Seed: revealed ocean cells on the left edge
+        for (let r = 0; r < rows; r++) {
+          if (oceanMask[r][0] && revealed[r][0]) {
+            queue.push([r, 0]);
+            visited[r][0] = true;
+          }
+        }
+
+        while (queue.length > 0) {
+          const [r, c] = queue.shift();
+          if (c === cols - 1) return true; // Reached right edge!
+
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nr = r + dr,
+                nc = c + dc;
+              if (
+                nr >= 0 &&
+                nr < rows &&
+                nc >= 0 &&
+                nc < cols &&
+                !visited[nr][nc] &&
+                oceanMask[nr][nc] &&
+                revealed[nr][nc]
+              ) {
+                visited[nr][nc] = true;
+                queue.push([nr, nc]);
+              }
+            }
+          }
+        }
+        return false;
+      }
+
+      function onGameOver(r, c) {
+        gameOver = true;
+        clearInterval(timerInterval);
+        revealed[r][c] = "boom";
+        document.getElementById("faceBtn").innerHTML = "&#128565;";
+        document.getElementById("statusBar").textContent =
+          "BOOM! Ship sunk. Try again.";
+        document.getElementById("statusBar").className = "status-bar lose-msg";
+
+        // Reveal all mines
+        for (let rr = 0; rr < rows; rr++) {
+          for (let cc = 0; cc < cols; cc++) {
+            if (mines[rr][cc] || (flagged[rr][cc] && !mines[rr][cc])) {
+              drawCell(rr, cc);
+            }
+          }
+        }
+      }
+
+      function onWin() {
+        gameWon = true;
+        gameOver = true;
+        clearInterval(timerInterval);
+        document.getElementById("faceBtn").innerHTML = "&#128526;";
+        document.getElementById("statusBar").textContent =
+          "You navigated the Strait! Safe passage!";
+        document.getElementById("statusBar").className = "status-bar win-msg";
+      }
+
+      // Input handling
+      gameCanvas.addEventListener("mousedown", function (e) {
+        if (gameOver) return;
+        const rect = gameCanvas.getBoundingClientRect();
+        const c = Math.floor((e.clientX - rect.left) / CELL);
+        const r = Math.floor((e.clientY - rect.top) / CELL);
+        if (r < 0 || r >= rows || c < 0 || c >= cols || !oceanMask[r][c])
+          return;
+
+        if (e.button === 2) {
+          // Right click - flag
+          e.preventDefault();
+          if (revealed[r][c]) return;
+          flagged[r][c] = !flagged[r][c];
+          flagCount += flagged[r][c] ? 1 : -1;
+          document.getElementById("mineCounter").textContent = String(
+            Math.max(0, mineCount - flagCount),
+          ).padStart(3, "0");
+          drawCell(r, c);
+          return;
+        }
+
+        if (e.button !== 0) return;
+        if (flagged[r][c]) return;
+
+        // First click safety: ensure first click is not a mine
+        if (!started) {
+          started = true;
+          if (mines[r][c]) {
+            mines[r][c] = false;
+            // Place mine elsewhere
+            for (let rr = 0; rr < rows; rr++) {
+              for (let cc = 0; cc < cols; cc++) {
+                if (
+                  oceanMask[rr][cc] &&
+                  !mines[rr][cc] &&
+                  !(rr === r && cc === c)
+                ) {
+                  // Not adjacent to first click
+                  if (Math.abs(rr - r) > 1 || Math.abs(cc - c) > 1) {
+                    mines[rr][cc] = true;
+                    break;
+                  }
+                }
+              }
+              if (!mines[r][c]) break;
+            }
+            // Recompute numbers
+            for (let rr = 0; rr < rows; rr++) {
+              for (let cc = 0; cc < cols; cc++) {
+                if (!oceanMask[rr][cc] || mines[rr][cc]) continue;
+                let count = 0;
+                for (let dr = -1; dr <= 1; dr++) {
+                  for (let dc = -1; dc <= 1; dc++) {
+                    const nr = rr + dr,
+                      nc = cc + dc;
+                    if (
+                      nr >= 0 &&
+                      nr < rows &&
+                      nc >= 0 &&
+                      nc < cols &&
+                      mines[nr][nc]
+                    )
+                      count++;
+                  }
+                }
+                grid[rr][cc] = count;
+              }
+            }
+          }
+          timerInterval = setInterval(() => {
+            seconds++;
+            document.getElementById("timer").textContent = String(
+              Math.min(seconds, 999),
+            ).padStart(3, "0");
+          }, 1000);
+        }
+
+        if (revealed[r][c]) {
+          // Chord: if number matches adjacent flags, reveal adjacent
+          if (grid[r][c] > 0) {
+            let adjFlags = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                const nr = r + dr,
+                  nc = c + dc;
+                if (
+                  nr >= 0 &&
+                  nr < rows &&
+                  nc >= 0 &&
+                  nc < cols &&
+                  flagged[nr][nc]
+                )
+                  adjFlags++;
+              }
+            }
+            if (adjFlags === grid[r][c]) {
+              for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                  const nr = r + dr,
+                    nc = c + dc;
+                  if (
+                    nr >= 0 &&
+                    nr < rows &&
+                    nc >= 0 &&
+                    nc < cols &&
+                    !flagged[nr][nc] &&
+                    !revealed[nr][nc] &&
+                    oceanMask[nr][nc]
+                  ) {
+                    if (mines[nr][nc]) {
+                      onGameOver(nr, nc);
+                      return;
+                    }
+                    revealCell(nr, nc);
+                  }
+                }
+              }
+            }
+          }
+          if (!gameOver && checkWin()) onWin();
+          return;
+        }
+
+        if (mines[r][c]) {
+          onGameOver(r, c);
+          return;
+        }
+
+        revealCell(r, c);
+        if (checkWin()) onWin();
       });
-      gameCanvas.dispatchEvent(synth);
-    }
-  }
-}, {passive: true});
 
-function showHelp() {
-  document.getElementById('helpModal').classList.add('active');
-}
+      gameCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// Pressing face during game
-document.getElementById('faceBtn').addEventListener('mousedown', function() {
-  if (!gameOver) document.getElementById('faceBtn').innerHTML = '&#128562;';
-});
+      // Touch support: tap to reveal, long-press to flag
+      let touchTimer = null;
+      let touchMoved = false;
 
-// Register service worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
-</script>
-</body>
+      gameCanvas.addEventListener(
+        "touchstart",
+        function (e) {
+          e.preventDefault();
+          touchMoved = false;
+          const touch = e.touches[0];
+          const rect = gameCanvas.getBoundingClientRect();
+          const c = Math.floor((touch.clientX - rect.left) / CELL);
+          const r = Math.floor((touch.clientY - rect.top) / CELL);
+
+          touchTimer = setTimeout(() => {
+            touchTimer = null;
+            if (touchMoved) return;
+            // Long press = flag
+            if (
+              r >= 0 &&
+              r < rows &&
+              c >= 0 &&
+              c < cols &&
+              oceanMask[r][c] &&
+              !revealed[r][c] &&
+              !gameOver
+            ) {
+              flagged[r][c] = !flagged[r][c];
+              flagCount += flagged[r][c] ? 1 : -1;
+              document.getElementById("mineCounter").textContent = String(
+                Math.max(0, mineCount - flagCount),
+              ).padStart(3, "0");
+              drawCell(r, c);
+            }
+          }, 400);
+        },
+        { passive: false },
+      );
+
+      gameCanvas.addEventListener(
+        "touchmove",
+        function () {
+          touchMoved = true;
+          if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+          }
+        },
+        { passive: true },
+      );
+
+      gameCanvas.addEventListener(
+        "touchend",
+        function (e) {
+          if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+            if (!touchMoved) {
+              // Short tap = left click
+              const touch = e.changedTouches[0];
+              const rect = gameCanvas.getBoundingClientRect();
+              const synth = new MouseEvent("mousedown", {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                button: 0,
+                bubbles: true,
+              });
+              gameCanvas.dispatchEvent(synth);
+            }
+          }
+        },
+        { passive: true },
+      );
+
+      function showHelp() {
+        document.getElementById("helpModal").classList.add("active");
+      }
+
+      // Pressing face during game
+      document
+        .getElementById("faceBtn")
+        .addEventListener("mousedown", function () {
+          if (!gameOver)
+            document.getElementById("faceBtn").innerHTML = "&#128562;";
+        });
+
+      // Register service worker
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      }
+    </script>
+  </body>
 </html>
