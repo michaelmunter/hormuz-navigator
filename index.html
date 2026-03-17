@@ -98,8 +98,8 @@ body {
 }
 canvas { display: block; }
 #oceanCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
-#mapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
-#gameCanvas { position: relative; z-index: 2; }
+#gameCanvas { position: relative; z-index: 1; }
+#mapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2; }
 
 .status-bar {
   margin-top: 6px;
@@ -484,16 +484,14 @@ function drawCell(r, c) {
       gctx.fillText(grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
     }
   } else {
-    // Raised cell (semi-transparent so ocean layer shows through)
-    gctx.globalAlpha = 0.85;
+    // Raised cell
     gctx.fillStyle = '#c0c0c0';
     gctx.fillRect(x, y, CELL, CELL);
-    gctx.globalAlpha = 1.0;
     // 3D border
-    gctx.fillStyle = 'rgba(255,255,255,0.9)';
+    gctx.fillStyle = '#fff';
     gctx.fillRect(x, y, CELL, 2);
     gctx.fillRect(x, y, 2, CELL);
-    gctx.fillStyle = 'rgba(128,128,128,0.9)';
+    gctx.fillStyle = '#808080';
     gctx.fillRect(x + CELL - 2, y, 2, CELL);
     gctx.fillRect(x, y + CELL - 2, CELL, 2);
 
