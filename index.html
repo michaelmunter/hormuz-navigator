@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000080">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Hormuz Navigator</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -106,6 +111,20 @@ canvas { display: block; }
 .win-msg { color: #006400; font-weight: bold; }
 .lose-msg { color: #8b0000; font-weight: bold; }
 
+.ad-banner {
+  background: #e0e0e0;
+  border: 1px solid #999;
+  text-align: center;
+  padding: 8px;
+  font-size: 11px;
+  color: #666;
+  margin-top: 8px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Modal overlay */
 .modal-overlay {
   display: none;
@@ -164,14 +183,18 @@ canvas { display: block; }
     <div class="status-bar" id="statusBar">Navigate the Strait of Hormuz. Clear a path from left to right!</div>
   </div>
 </div>
+<div class="ad-banner" id="adBanner">
+  <!-- Replace with AdSense/AdMob script when ready -->
+  Ad space - your tanker insurance here
+</div>
 
 <div class="modal-overlay" id="helpModal">
   <div class="modal">
     <h2>Hormuz Navigator</h2>
     <p>
       Clear a safe path through the Strait of Hormuz!<br><br>
-      <b>Left-click</b> to reveal a cell.<br>
-      <b>Right-click</b> to flag a mine.<br><br>
+      <b>Tap / Left-click</b> to reveal a cell.<br>
+      <b>Long-press / Right-click</b> to flag a mine.<br><br>
       You win when revealed ocean cells form a connected path from the <b>left edge</b> to the <b>right edge</b> of the strait.<br><br>
       Gray cells = land (not playable).<br>
       Numbers show adjacent mines.
@@ -692,6 +715,52 @@ gameCanvas.addEventListener('mousedown', function(e) {
 
 gameCanvas.addEventListener('contextmenu', e => e.preventDefault());
 
+// Touch support: tap to reveal, long-press to flag
+let touchTimer = null;
+let touchMoved = false;
+
+gameCanvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  touchMoved = false;
+  const touch = e.touches[0];
+  const rect = gameCanvas.getBoundingClientRect();
+  const c = Math.floor((touch.clientX - rect.left) / CELL);
+  const r = Math.floor((touch.clientY - rect.top) / CELL);
+
+  touchTimer = setTimeout(() => {
+    touchTimer = null;
+    if (touchMoved) return;
+    // Long press = flag
+    if (r >= 0 && r < rows && c >= 0 && c < cols && oceanMask[r][c] && !revealed[r][c] && !gameOver) {
+      flagged[r][c] = !flagged[r][c];
+      flagCount += flagged[r][c] ? 1 : -1;
+      document.getElementById('mineCounter').textContent = String(Math.max(0, mineCount - flagCount)).padStart(3, '0');
+      drawCell(r, c);
+    }
+  }, 400);
+}, {passive: false});
+
+gameCanvas.addEventListener('touchmove', function() {
+  touchMoved = true;
+  if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+}, {passive: true});
+
+gameCanvas.addEventListener('touchend', function(e) {
+  if (touchTimer) {
+    clearTimeout(touchTimer);
+    touchTimer = null;
+    if (!touchMoved) {
+      // Short tap = left click
+      const touch = e.changedTouches[0];
+      const rect = gameCanvas.getBoundingClientRect();
+      const synth = new MouseEvent('mousedown', {
+        clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true
+      });
+      gameCanvas.dispatchEvent(synth);
+    }
+  }
+}, {passive: true});
+
 function showHelp() {
   document.getElementById('helpModal').classList.add('active');
 }
@@ -700,6 +769,11 @@ function showHelp() {
 document.getElementById('faceBtn').addEventListener('mousedown', function() {
   if (!gameOver) document.getElementById('faceBtn').innerHTML = '&#128562;';
 });
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
