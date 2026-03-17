@@ -97,8 +97,9 @@ body {
   cursor: default;
 }
 canvas { display: block; }
-#mapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
-#gameCanvas { position: relative; z-index: 1; }
+#oceanCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
+#mapCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
+#gameCanvas { position: relative; z-index: 2; }
 
 .status-bar {
   margin-top: 6px;
@@ -180,6 +181,7 @@ canvas { display: block; }
       <div class="counter" id="timer">000</div>
     </div>
     <div class="board-wrap" id="boardWrap">
+      <canvas id="oceanCanvas"></canvas>
       <canvas id="mapCanvas"></canvas>
       <canvas id="gameCanvas"></canvas>
     </div>
@@ -211,12 +213,16 @@ const CELL = 20;
 const MINE_RATIO = 0.25;
 
 const mapImg = new Image();
+const oceanImg = new Image();
 mapImg.src = 'hormuz.png';
+oceanImg.src = 'hormuzfilled.png';
 
 const gameCanvas = document.getElementById('gameCanvas');
 const mapCanvas = document.getElementById('mapCanvas');
+const oceanCanvas = document.getElementById('oceanCanvas');
 const gctx = gameCanvas.getContext('2d');
 const mctx = mapCanvas.getContext('2d');
+const octx = oceanCanvas.getContext('2d');
 
 let cols, rows, grid, oceanMask;
 let mines, revealed, flagged, gameOver, gameWon, mineCount, flagCount;
@@ -313,7 +319,16 @@ function placeMinesWithPath(oceanCells) {
   }
 }
 
-mapImg.onload = function() {
+let imagesLoaded = 0;
+function onImageLoad() {
+  imagesLoaded++;
+  if (imagesLoaded < 2) return;
+  initGame();
+}
+mapImg.onload = onImageLoad;
+oceanImg.onload = onImageLoad;
+
+function initGame() {
   // Scale image to fit reasonably on screen
   const maxW = Math.min(window.innerWidth - 60, 1200);
   const maxH = Math.min(window.innerHeight - 160, 750);
@@ -326,8 +341,8 @@ mapImg.onload = function() {
   const canvasW = cols * CELL;
   const canvasH = rows * CELL;
 
-  gameCanvas.width = mapCanvas.width = canvasW;
-  gameCanvas.height = mapCanvas.height = canvasH;
+  gameCanvas.width = mapCanvas.width = oceanCanvas.width = canvasW;
+  gameCanvas.height = mapCanvas.height = oceanCanvas.height = canvasH;
   document.getElementById('boardWrap').style.width = canvasW + 'px';
   document.getElementById('boardWrap').style.height = canvasH + 'px';
 
@@ -356,11 +371,16 @@ mapImg.onload = function() {
     }
   }
 
-  // Draw the map image on mapCanvas (land areas visible behind the grid)
+  // Layer 1: ocean satellite at low opacity (visible through transparent game cells)
+  octx.globalAlpha = 0.3;
+  octx.drawImage(oceanImg, 0, 0, canvasW, canvasH);
+  octx.globalAlpha = 1.0;
+
+  // Layer 2: land satellite at full opacity (transparent ocean lets layer 1 show through)
   mctx.drawImage(mapImg, 0, 0, canvasW, canvasH);
 
   newGame();
-};
+}
 
 function newGame() {
   gameOver = false;
@@ -464,14 +484,16 @@ function drawCell(r, c) {
       gctx.fillText(grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
     }
   } else {
-    // Raised cell
+    // Raised cell (semi-transparent so ocean layer shows through)
+    gctx.globalAlpha = 0.85;
     gctx.fillStyle = '#c0c0c0';
     gctx.fillRect(x, y, CELL, CELL);
+    gctx.globalAlpha = 1.0;
     // 3D border
-    gctx.fillStyle = '#fff';
+    gctx.fillStyle = 'rgba(255,255,255,0.9)';
     gctx.fillRect(x, y, CELL, 2);
     gctx.fillRect(x, y, 2, CELL);
-    gctx.fillStyle = '#808080';
+    gctx.fillStyle = 'rgba(128,128,128,0.9)';
     gctx.fillRect(x + CELL - 2, y, 2, CELL);
     gctx.fillRect(x, y + CELL - 2, CELL, 2);
 
