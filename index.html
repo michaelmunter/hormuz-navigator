@@ -182,7 +182,7 @@ canvas { display: block; }
 
 <script>
 const CELL = 20;
-const MINE_RATIO = 0.18;
+const MINE_RATIO = 0.25;
 
 const mapImg = new Image();
 mapImg.src = 'hormuz.png';
@@ -198,6 +198,88 @@ let timerInterval, seconds, started;
 
 // Colors for numbers (classic minesweeper)
 const NUM_COLORS = [null, '#0000ff', '#008000', '#ff0000', '#000080', '#800000', '#008080', '#000000', '#808080'];
+
+// BFS shortest path through ocean from left to right edge
+function findOceanPath() {
+  const visited = Array.from({length: rows}, () => Array(cols).fill(false));
+  const parent = Array.from({length: rows}, () => Array(cols).fill(null));
+  const queue = [];
+
+  // Seed from all ocean cells on left edge
+  for (let r = 0; r < rows; r++) {
+    if (oceanMask[r][0]) {
+      queue.push([r, 0]);
+      visited[r][0] = true;
+    }
+  }
+
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    if (c === cols - 1) {
+      // Trace path back
+      const path = [];
+      let cur = [r, c];
+      while (cur) {
+        path.push(cur);
+        cur = parent[cur[0]][cur[1]];
+      }
+      return path;
+    }
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
+            !visited[nr][nc] && oceanMask[nr][nc]) {
+          visited[nr][nc] = true;
+          parent[nr][nc] = [r, c];
+          queue.push([nr, nc]);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function placeMinesWithPath(oceanCells) {
+  // 1. Find a path through the ocean
+  const path = findOceanPath();
+  const protectedSet = new Set();
+
+  if (path) {
+    // Protect path cells and their immediate neighbors (so path stays navigable)
+    for (const [r, c] of path) {
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && oceanMask[nr][nc]) {
+            protectedSet.add(nr * cols + nc);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Separate ocean cells into placeable and protected
+  const placeable = [];
+  for (const [r, c] of oceanCells) {
+    if (!protectedSet.has(r * cols + c)) {
+      placeable.push([r, c]);
+    }
+  }
+
+  // 3. Shuffle and place mines only on non-protected cells
+  const shuffled = placeable.sort(() => Math.random() - 0.5);
+  const toPlace = Math.min(mineCount, shuffled.length);
+  for (let i = 0; i < toPlace; i++) {
+    const [r, c] = shuffled[i];
+    mines[r][c] = true;
+  }
+
+  // Update actual mine count (might be slightly less if not enough placeable cells)
+  mineCount = toPlace;
+  document.getElementById('mineCounter').textContent = String(mineCount).padStart(3, '0');
+}
 
 mapImg.onload = function() {
   // Scale image to fit reasonably on screen
@@ -289,12 +371,8 @@ function newGame() {
     }
   }
 
-  // Place mines randomly in ocean cells
-  const shuffled = oceanCells.slice().sort(() => Math.random() - 0.5);
-  for (let i = 0; i < mineCount; i++) {
-    const [r, c] = shuffled[i];
-    mines[r][c] = true;
-  }
+  // Place mines with guaranteed path
+  placeMinesWithPath(oceanCells);
 
   // Compute numbers
   for (let r = 0; r < rows; r++) {
