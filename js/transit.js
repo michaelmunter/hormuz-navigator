@@ -3,12 +3,21 @@
   const G = window.Game;
 
   // Difficulty tables indexed by barrel count
+  // missileRate/shahedRate = base interval in seconds (gets shorter as elapsed time ramps up)
+  // missileSpeed = base missile speed in px/s (scales with ship speed for lead calculation)
   var BARREL_CONFIG = {
-    10:  { mineRatio: 0.10, speed: 3.5, missileRate: 4.0, shahedRate: 6.0, multiplier: 1 },
-    25:  { mineRatio: 0.20, speed: 2.5, missileRate: 2.5, shahedRate: 4.0, multiplier: 2.5 },
-    50:  { mineRatio: 0.25, speed: 2.0, missileRate: 2.0, shahedRate: 3.0, multiplier: 5 },
-    100: { mineRatio: 0.30, speed: 1.5, missileRate: 1.5, shahedRate: 2.5, multiplier: 10 }
+    10:  { mineRatio: 0.08, speed: 3.5, missileRate: 8.0, missileSpeed: 70,  shahedRate: 14.0, multiplier: 1 },
+    25:  { mineRatio: 0.20, speed: 2.5, missileRate: 4.0, missileSpeed: 110, shahedRate: 6.0,  multiplier: 2.5 },
+    50:  { mineRatio: 0.25, speed: 2.0, missileRate: 3.0, missileSpeed: 120, shahedRate: 4.0,  multiplier: 5 },
+    100: { mineRatio: 0.30, speed: 1.5, missileRate: 2.5, missileSpeed: 140, shahedRate: 3.0,  multiplier: 10 }
   };
+
+  // Grace period: no attacks for the first N seconds of each transit leg
+  var GRACE_PERIOD = 5;
+  // Ramp: threat intensity increases over this many seconds after grace period ends
+  var RAMP_DURATION = 20;
+  // Minimum distance (in pixels) between missile spawn and ship — prevents instant-hit missiles
+  var MIN_MISSILE_SPAWN_DIST = 500;
   G.BARREL_CONFIG = BARREL_CONFIG;
 
   // Transit state
@@ -32,7 +41,8 @@
     shipFacingRight: true,  // mirror direction
     effects: [],            // visual effects (explosions, splashes)
     landEdgeCells: null,
-    config: null
+    config: null,
+    elapsed: 0              // seconds since transit leg started (for grace period)
   };
 
   G.startTransit = function (direction) {
@@ -64,6 +74,7 @@
     t.transitSeconds = 0;
     t.shipTilt = 0;
     t.dead = false;
+    t.elapsed = 0;
 
     // Determine initial facing from path direction
     if (t.path.length >= 2) {
@@ -176,45 +187,80 @@
       t.shipTilt += diff * Math.min(1, dt * 5);
     }
 
-    // Spawn missiles
+    // Track elapsed time for grace period and ramp
+    t.elapsed += dt;
+
+    // Threat ramp: 0 during grace, ramps 0→1 over RAMP_DURATION after grace ends, then stays at 1
+    var threatTime = Math.max(0, t.elapsed - GRACE_PERIOD);
+    var ramp = Math.min(1, threatTime / RAMP_DURATION);
+    // Ramp affects spawn rate: at ramp=0 rate is 3x slower, at ramp=1 rate is normal
+    var rateMultiplier = 1 / (1 + 2 * (1 - ramp)); // 0.33 → 1.0
+
+    // Spawn missiles (only after grace period)
     t.missileTimer += dt;
-    if (t.missileTimer >= cfg.missileRate / returnMult && t.landEdgeCells.length > 0) {
+    var effectiveMissileRate = cfg.missileRate / (returnMult * rateMultiplier);
+    if (t.elapsed > GRACE_PERIOD && t.missileTimer >= effectiveMissileRate && t.landEdgeCells.length > 0) {
       t.missileTimer = 0;
-      var spawn = t.landEdgeCells[Math.floor(Math.random() * t.landEdgeCells.length)];
+
+      // Pick a spawn cell that's far enough from the ship
+      var shipPxSpawn = t.path[t.shipPos][1] * G.CELL + G.CELL / 2;
+      var shipPySpawn = t.path[t.shipPos][0] * G.CELL + G.CELL / 2;
+      var candidates = [];
+      for (var ci = 0; ci < t.landEdgeCells.length; ci++) {
+        var ec = t.landEdgeCells[ci];
+        var ex = ec[1] * G.CELL + G.CELL / 2, ey = ec[0] * G.CELL + G.CELL / 2;
+        var ed = (ex - shipPxSpawn) * (ex - shipPxSpawn) + (ey - shipPySpawn) * (ey - shipPySpawn);
+        if (ed >= MIN_MISSILE_SPAWN_DIST * MIN_MISSILE_SPAWN_DIST) candidates.push(ec);
+      }
+      // If no cells are far enough, skip this spawn entirely — don't fire a point-blank missile
+      if (candidates.length === 0) {
+        t.missileTimer = 0;
+      } else {
+
+      var spawn = candidates[Math.floor(Math.random() * candidates.length)];
       var sr = spawn[0], sc = spawn[1];
       var spawnX = sc * G.CELL + G.CELL / 2;
       var spawnY = sr * G.CELL + G.CELL / 2;
+      // Missile speed scales with ramp — starts at 40% speed, ramps to full
+      var missileSpeed = cfg.missileSpeed * (0.4 + 0.6 * ramp);
 
       // Lead the target: estimate missile flight time, look ahead on ship path
       var curR = t.path[t.shipPos][0], curC = t.path[t.shipPos][1];
       var curX = curC * G.CELL + G.CELL / 2, curY = curR * G.CELL + G.CELL / 2;
       var roughDist = Math.sqrt((curX - spawnX) * (curX - spawnX) + (curY - spawnY) * (curY - spawnY));
-      var missileSpeed = 120;
       var flightTime = roughDist / missileSpeed;
       var leadCells = Math.round(cfg.speed * t.shipSpeed * flightTime);
       var leadIdx = Math.min(Math.max(0, t.shipPos + leadCells), t.path.length - 1);
       var tr = t.path[leadIdx][0], tc = t.path[leadIdx][1];
       var targetX = tc * G.CELL + G.CELL / 2;
       var targetY = tr * G.CELL + G.CELL / 2;
+
       var dx = targetX - spawnX;
       var dy = targetY - spawnY;
       var dist = Math.sqrt(dx * dx + dy * dy);
-      var speed = 120;
+
+      // Enforce minimum flight time — player always has at least 3s to react
+      // Account for ship closing the gap: effective speed = missile + ship toward each other
+      var MIN_FLIGHT_TIME = 3.0;
+      var shipSpeedPx = cfg.speed * G.CELL; // ship speed in px/s
+      var maxSpeed = Math.max(20, (dist / MIN_FLIGHT_TIME) - shipSpeedPx);
+      if (missileSpeed > maxSpeed) missileSpeed = maxSpeed;
       t.missiles.push({
         x: spawnX,
         y: spawnY,
-        vx: (dx / dist) * speed,
-        vy: (dy / dist) * speed,
+        vx: (dx / dist) * missileSpeed,
+        vy: (dy / dist) * missileSpeed,
         targetX: targetX,
         targetY: targetY
       });
       G.sounds.missileIncoming();
+      } // end else (candidates found)
     }
 
-    // Spawn shaheds
+    // Spawn shaheds (only after grace period, with ramp)
     t.shahedTimer += dt;
-    var shahedRate = cfg.shahedRate / (t.direction === 'return' ? 1.3 : 1.0);
-    if (t.shahedTimer >= shahedRate) {
+    var effectiveShahedRate = cfg.shahedRate / ((t.direction === 'return' ? 1.3 : 1.0) * rateMultiplier);
+    if (t.elapsed > GRACE_PERIOD && t.shahedTimer >= effectiveShahedRate) {
       t.shahedTimer = 0;
       var fromTop = Math.random() > 0.5;
       var sx = fromTop ? Math.random() * G.gameCanvas.width : G.gameCanvas.width;
@@ -259,7 +305,6 @@
       var sdx = shipPx - s.x, sdy = shipPy - s.y;
       var sdist = Math.sqrt(sdx * sdx + sdy * sdy);
       if (sdist < hitRadius) {
-        // One hit kill
         t.shaheds.splice(j, 1);
         G.onTransitDeath();
         return;
@@ -313,7 +358,8 @@
     G.drawTransitBoard(t);
     G.drawShipStruck(px, py, t.shipTilt, t.shipFacingRight);
 
-    G.savePlayer(); // ship destruction is permanent
+    G.player.inRun = false;
+    G.savePlayer(); // ship destruction is permanent — run is over
   };
 
   // Handle click on shahed during transit

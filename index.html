@@ -411,6 +411,25 @@
       </div>
     </div>
 
+    <!-- Returning player overlay — shown on reload when player has progress -->
+    <div class="modal-overlay" id="returningOverlay">
+      <div class="modal">
+        <h2>&#9875; Welcome Back, Captain</h2>
+        <table class="score-table">
+          <tr><td>Bank balance</td><td id="returningBank">—</td></tr>
+          <tr><td>Runs completed</td><td id="returningTurns">—</td></tr>
+        </table>
+        <div class="score-actions">
+          <button class="barrel-btn" onclick="continueGame()" style="padding:8px 16px">
+            Continue
+          </button>
+          <button class="barrel-btn" onclick="cashOut()" style="padding:8px 16px">
+            Retire
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Score overlay -->
     <div class="modal-overlay" id="scoreOverlay">
       <div class="modal">

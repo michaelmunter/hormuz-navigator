@@ -173,7 +173,8 @@
       }
     }
 
-    G.savePlayer(); // mine hit is permanent
+    G.player.inRun = false;
+    G.savePlayer(); // mine hit is permanent — run is over
   };
 
   G.onMinesweeperWin = function () {

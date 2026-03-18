@@ -21,7 +21,8 @@
       crew: [],       // placeholder for PR 4
       ship: null,     // placeholder for PR 3
       turn: 0,
-      equipment: []   // placeholder for PR 5
+      equipment: [],  // placeholder for PR 5
+      inRun: false    // true while a run is in progress (mine phase or transit)
     };
   };
 
@@ -77,7 +78,20 @@
       G.initBoard();
       G.loadPlayer();
       G.cumulativeScore = G.player.bank;
-      G.showMenu();
+
+      // If player was mid-run, that run is lost (they closed the tab to escape)
+      // Treat as a failed run — clear inRun flag and save
+      if (G.player.inRun) {
+        G.player.inRun = false;
+        G.savePlayer();
+      }
+
+      // If player has progress (bank differs from starting), show continue/cash out
+      if (G.player.bank !== STARTING_BANK || G.player.turn > 0) {
+        G.showReturningMenu();
+      } else {
+        G.showMenu();
+      }
     }
   }
   G.oceanImg.onload = onMapImgLoad;
@@ -120,7 +134,17 @@
     G.state = 'MENU';
     G.resetCounterStyle();
     document.getElementById('menuOverlay').classList.add('active');
+    document.getElementById('returningOverlay').classList.remove('active');
     document.getElementById('cumulativeScoreDisplay').textContent = G.formatMoney(G.player.bank);
+  };
+
+  G.showReturningMenu = function () {
+    G.state = 'MENU';
+    G.resetCounterStyle();
+    document.getElementById('returningOverlay').classList.add('active');
+    document.getElementById('menuOverlay').classList.remove('active');
+    document.getElementById('returningBank').textContent = G.formatMoney(G.player.bank);
+    document.getElementById('returningTurns').textContent = G.player.turn;
   };
 
   G.startRound = function (barrels) {
@@ -129,7 +153,8 @@
     G.state = 'MINESWEEPER';
     var cfg = G.BARREL_CONFIG[barrels];
     G.initMinesweeper(cfg.mineRatio);
-    G.savePlayer(); // committed to this run
+    G.player.inRun = true;
+    G.savePlayer(); // committed to this run — closing tab now = lost run
   };
 
   // Called from transit.js when forward leg completes and then return leg completes
@@ -144,6 +169,7 @@
     G.roundScore = Math.max(0, Math.floor((base - timePenalty + shahedBonus) * cfg.multiplier));
     G.player.bank += G.roundScore;
     G.player.turn++;
+    G.player.inRun = false;
     G.cumulativeScore = G.player.bank;
 
     G.resetCounterStyle();
@@ -165,8 +191,14 @@
     G.showMenu();
   };
 
+  G.continueGame = function () {
+    document.getElementById('returningOverlay').classList.remove('active');
+    G.showMenu();
+  };
+
   G.cashOut = function () {
     document.getElementById('scoreOverlay').classList.remove('active');
+    document.getElementById('returningOverlay').classList.remove('active');
     G.saveHighScore(G.player.bank);
     G.deleteSave();
     G.player = G.createFreshPlayer();
@@ -185,10 +217,21 @@
     clearInterval(G.ms.timerInterval);
     G.resetCounterStyle();
     document.getElementById('scoreOverlay').classList.remove('active');
-    G.deleteSave();
-    G.player = G.createFreshPlayer();
+
+    // Mark run as over (player abandoned or died)
+    G.player.inRun = false;
     G.cumulativeScore = G.player.bank;
-    G.showMenu();
+
+    // If player has progress, show continue/cash out menu
+    if (G.player.bank !== STARTING_BANK || G.player.turn > 0) {
+      G.savePlayer();
+      G.showReturningMenu();
+    } else {
+      G.deleteSave();
+      G.player = G.createFreshPlayer();
+      G.cumulativeScore = G.player.bank;
+      G.showMenu();
+    }
   };
 
   // High scores in localStorage
@@ -270,6 +313,7 @@
   window.startTestMode = function () { G.startTestMode(); };
   window.goAgain = function () { G.goAgain(); };
   window.cashOut = function () { G.cashOut(); };
+  window.continueGame = function () { G.continueGame(); };
   window.toggleMute = function () { G.toggleMute(); };
   window.transitControl = function (a) { G.transitControl(a); };
 })();

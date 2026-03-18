@@ -310,5 +310,6 @@
     for (const e of transit.effects) {
       G.drawEffect(e);
     }
+
   };
 })();
