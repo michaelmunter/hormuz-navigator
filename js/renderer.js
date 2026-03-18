@@ -320,6 +320,48 @@
       return;
     }
 
+    if (effect.type === 'shotgun_blast') {
+      // Cosmetic pellet scatter flying outward from ship in a cone
+      var progress = 1 - alpha; // 0 → 1 over lifetime
+      var spread = Math.PI / 16; // tighter visual cone
+      var maxDist = CELL * 9.6;  // match SHOTGUN_RANGE
+      var pelletCount = 16;
+      ctx.save();
+      for (var p = 0; p < pelletCount; p++) {
+        // Deterministic scatter per pellet using effect position as seed
+        var seed = effect.x * 13.7 + effect.y * 7.3 + p * 31.1;
+        var pAngle = effect.angle + (((seed % 100) / 100) - 0.5) * 2 * spread;
+        var pDist = maxDist * (0.3 + 0.7 * ((seed * 3.7 % 100) / 100)) * progress;
+        var px = effect.x + Math.cos(pAngle) * pDist;
+        var py = effect.y + Math.sin(pAngle) * pDist;
+        var r = 2.5 * (1 - progress * 0.3);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ffe060';
+        ctx.strokeStyle = '#a0600a';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      // Muzzle flash at origin — bigger and brighter
+      if (progress < 0.5) {
+        var flashAlpha = (1 - progress / 0.5) * 0.85;
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, CELL * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffa020';
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, CELL * 0.7, 0, Math.PI * 2);
+        ctx.globalAlpha = flashAlpha * 0.4;
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+
     // Sprite-based effects (explosions)
     var img = G.sprites.explosion;
     if (!img.complete || !img.naturalWidth) return;
@@ -353,30 +395,12 @@
       G.drawTransitRoute(transit.path, ctx);
     }
 
-    // Draw ship — smooth position interpolation between path cells
+    // Draw ship — use shared interpolation helper
     var shipPx = 0, shipPy = 0;
     if (transit.shipPos !== null && transit.path) {
-      var curCell = transit.path[transit.shipPos];
-      shipPx = curCell[1] * G.CELL + G.CELL / 2;
-      shipPy = curCell[0] * G.CELL + G.CELL / 2;
-
-      // Interpolate between path cells using moveAccum (-1..1)
-      // Positive: lerp toward next cell; negative: lerp toward previous cell
-      if (transit.moveAccum > 0) {
-        var fwdIdx = Math.min(transit.shipPos + 1, transit.path.length - 1);
-        if (fwdIdx !== transit.shipPos) {
-          var fwdCell = transit.path[fwdIdx];
-          shipPx += (fwdCell[1] * G.CELL + G.CELL / 2 - shipPx) * transit.moveAccum;
-          shipPy += (fwdCell[0] * G.CELL + G.CELL / 2 - shipPy) * transit.moveAccum;
-        }
-      } else if (transit.moveAccum < 0) {
-        var bwdIdx = Math.max(transit.shipPos - 1, 0);
-        if (bwdIdx !== transit.shipPos) {
-          var bwdCell = transit.path[bwdIdx];
-          shipPx += (bwdCell[1] * G.CELL + G.CELL / 2 - shipPx) * (-transit.moveAccum);
-          shipPy += (bwdCell[0] * G.CELL + G.CELL / 2 - shipPy) * (-transit.moveAccum);
-        }
-      }
+      var shipPos = G.getShipPixelPos(transit);
+      shipPx = shipPos.x;
+      shipPy = shipPos.y;
 
       if (!transit.dead) {
         G.drawShip(shipPx, shipPy, transit.shipAngle);

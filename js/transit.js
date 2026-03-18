@@ -111,6 +111,7 @@
     t.transitSeconds = 0;
     t.dead = false;
     t.elapsed = 0;
+    t.lastShotTime = -SHOTGUN_COOLDOWN; // allow immediate first shot
 
     // Determine initial heading angle from path direction
     if (t.path.length >= 2) {
@@ -176,6 +177,34 @@
 
   var SPEED_ACCEL = 3; // how fast shipSpeed approaches target (units/s)
   var ANGLE_LERP = 4;  // how fast shipAngle approaches target (radians/s factor)
+
+  // Shotgun constants
+  var SHOTGUN_SPREAD = Math.PI / 12;   // ~15° half-angle (30° total cone)
+  var SHOTGUN_RANGE = 192;             // max range in pixels (~9.6 cells)
+  var SHOTGUN_COOLDOWN = 1.5;          // seconds between shots
+  var SHOTGUN_CLOSE_RANGE = 60;        // close range for bonus damage (~3 cells)
+
+  // Interpolated ship pixel position — shared by collision, click handler, and renderer
+  function getShipPixelPos(t) {
+    var cell = t.path[t.shipPos];
+    var px = cell[1] * G.CELL + G.CELL / 2;
+    var py = cell[0] * G.CELL + G.CELL / 2;
+    if (t.moveAccum > 0) {
+      var fi = Math.min(t.shipPos + 1, t.path.length - 1);
+      if (fi !== t.shipPos) {
+        px += (t.path[fi][1] * G.CELL + G.CELL / 2 - px) * t.moveAccum;
+        py += (t.path[fi][0] * G.CELL + G.CELL / 2 - py) * t.moveAccum;
+      }
+    } else if (t.moveAccum < 0) {
+      var bi = Math.max(t.shipPos - 1, 0);
+      if (bi !== t.shipPos) {
+        px += (t.path[bi][1] * G.CELL + G.CELL / 2 - px) * (-t.moveAccum);
+        py += (t.path[bi][0] * G.CELL + G.CELL / 2 - py) * (-t.moveAccum);
+      }
+    }
+    return { x: px, y: py };
+  }
+  G.getShipPixelPos = getShipPixelPos;
 
   G.updateTransit = function (dt) {
     const t = G.transit;
@@ -329,26 +358,13 @@
         var fromTop = Math.random() > 0.5;
         var sx = fromTop ? Math.random() * G.gameCanvas.width : G.gameCanvas.width;
         var sy = fromTop ? 0 : Math.random() * G.gameCanvas.height * 0.85;
-        t.shaheds.push({ x: sx, y: sy, alive: true, trail: [] });
+        t.shaheds.push({ x: sx, y: sy, alive: true, trail: [], hp: 2 });
       }
     }
 
     // Interpolated ship position for collision (matches visual position)
-    var shipPx = t.path[t.shipPos][1] * G.CELL + G.CELL / 2;
-    var shipPy = t.path[t.shipPos][0] * G.CELL + G.CELL / 2;
-    if (t.moveAccum > 0) {
-      var fi = Math.min(t.shipPos + 1, t.path.length - 1);
-      if (fi !== t.shipPos) {
-        shipPx += (t.path[fi][1] * G.CELL + G.CELL / 2 - shipPx) * t.moveAccum;
-        shipPy += (t.path[fi][0] * G.CELL + G.CELL / 2 - shipPy) * t.moveAccum;
-      }
-    } else if (t.moveAccum < 0) {
-      var bi = Math.max(t.shipPos - 1, 0);
-      if (bi !== t.shipPos) {
-        shipPx += (t.path[bi][1] * G.CELL + G.CELL / 2 - shipPx) * (-t.moveAccum);
-        shipPy += (t.path[bi][0] * G.CELL + G.CELL / 2 - shipPy) * (-t.moveAccum);
-      }
-    }
+    var shipPos = getShipPixelPos(t);
+    var shipPx = shipPos.x, shipPy = shipPos.y;
     var hitRadius = G.CELL * 0.45;
 
     for (var i = t.missiles.length - 1; i >= 0; i--) {
@@ -460,26 +476,9 @@
     t.dead = true;
 
     // Freeze the interpolated ship position at death
-    var cell = t.path[t.shipPos];
-    var px = cell[1] * G.CELL + G.CELL / 2;
-    var py = cell[0] * G.CELL + G.CELL / 2;
-    if (t.moveAccum > 0) {
-      var fwdIdx = Math.min(t.shipPos + 1, t.path.length - 1);
-      if (fwdIdx !== t.shipPos) {
-        var fwd = t.path[fwdIdx];
-        px += (fwd[1] * G.CELL + G.CELL / 2 - px) * t.moveAccum;
-        py += (fwd[0] * G.CELL + G.CELL / 2 - py) * t.moveAccum;
-      }
-    } else if (t.moveAccum < 0) {
-      var bwdIdx = Math.max(t.shipPos - 1, 0);
-      if (bwdIdx !== t.shipPos) {
-        var bwd = t.path[bwdIdx];
-        px += (bwd[1] * G.CELL + G.CELL / 2 - px) * (-t.moveAccum);
-        py += (bwd[0] * G.CELL + G.CELL / 2 - py) * (-t.moveAccum);
-      }
-    }
-    t.deathPx = px;
-    t.deathPy = py;
+    var deathPos = getShipPixelPos(t);
+    t.deathPx = deathPos.x;
+    t.deathPy = deathPos.y;
     t.deathAngle = t.shipAngle;
 
     cancelAnimationFrame(t.animFrame);
@@ -498,42 +497,75 @@
     G.savePlayer(); // ship destruction is permanent — run is over
   };
 
-  // Handle click during transit — shotgun targets FPV drones, auto cannon targets shaheds
+  // Normalize angle to [-PI, PI]
+  function normalizeAngle(a) {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return a;
+  }
+
+  // Check if a point is inside the shotgun cone from origin toward shotAngle
+  function inCone(ox, oy, shotAngle, tx, ty) {
+    var dx = tx - ox, dy = ty - oy;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > SHOTGUN_RANGE) return false;
+    var angleToTarget = Math.atan2(dy, dx);
+    var diff = Math.abs(normalizeAngle(angleToTarget - shotAngle));
+    return diff < SHOTGUN_SPREAD;
+  }
+
+  // Handle click during transit — shotgun fires from ship toward click point
   G.handleTransitClick = function (px, py) {
     const t = G.transit;
     if (!t.active) return false;
 
-    const clickRadius = G.CELL * 1.2;
+    // Cooldown check
+    if (t.elapsed - t.lastShotTime < SHOTGUN_COOLDOWN) return false;
+    t.lastShotTime = t.elapsed;
 
-    // Check FPV drones first (shotgun — always available)
-    for (let i = t.fpvs.length - 1; i >= 0; i--) {
-      const f = t.fpvs[i];
-      const dx = px - f.x, dy = py - f.y;
-      if (dx * dx + dy * dy < clickRadius * clickRadius) {
+    // Ship position
+    var ship = getShipPixelPos(t);
+    var shotAngle = Math.atan2(py - ship.y, px - ship.x);
+
+    // Spawn visual effect
+    spawnEffect(t, 'shotgun_blast', ship.x, ship.y, 1, 0.4);
+    t.effects[t.effects.length - 1].angle = shotAngle;
+    G.sounds.shahedDestroyed(); // reuse for now
+
+    var hitSomething = false;
+
+    // Check FPV drones (1 HP — any hit kills)
+    for (var i = t.fpvs.length - 1; i >= 0; i--) {
+      var f = t.fpvs[i];
+      if (inCone(ship.x, ship.y, shotAngle, f.x, f.y)) {
         spawnEffect(t, 'shahed_explode', f.x, f.y, 2, 0.4);
         t.fpvs.splice(i, 1);
         t.fpvKills++;
-        G.sounds.shahedDestroyed();
-        return true;
+        hitSomething = true;
       }
     }
 
-    // Check shaheds (auto cannon — only if ship has gunner)
-    if (G.activeShip && G.activeShip.hasGunner) {
-      for (let i = t.shaheds.length - 1; i >= 0; i--) {
-        const s = t.shaheds[i];
-        const dx = px - s.x, dy = py - s.y;
-        if (dx * dx + dy * dy < clickRadius * clickRadius) {
+    // Check shaheds (2 HP — close range deals 2 damage, far deals 1)
+    for (var i = t.shaheds.length - 1; i >= 0; i--) {
+      var s = t.shaheds[i];
+      if (inCone(ship.x, ship.y, shotAngle, s.x, s.y)) {
+        var dx = s.x - ship.x, dy = s.y - ship.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        var dmg = dist < SHOTGUN_CLOSE_RANGE ? 2 : 1;
+        s.hp -= dmg;
+        if (s.hp <= 0) {
           spawnEffect(t, 'shahed_explode', s.x, s.y, 3, 0.5);
           t.shaheds.splice(i, 1);
           t.shahedKills++;
-          G.sounds.shahedDestroyed();
-          return true;
+        } else {
+          // Hit but not dead — flash effect
+          spawnEffect(t, 'explosion', s.x, s.y, 1.5, 0.2);
         }
+        hitSomething = true;
       }
     }
 
-    return false;
+    return hitSomething;
   };
 
   // Handle keyboard input during transit
