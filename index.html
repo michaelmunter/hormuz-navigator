@@ -207,34 +207,53 @@
         border-color: #808080 #fff #fff #808080;
       }
 
-      /* Barrel selector buttons */
-      .barrel-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin: 12px 0;
+      /* Ship selector buttons */
+      .ship-selector {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 10px 0;
+        max-height: 300px;
+        overflow-y: auto;
       }
-      .barrel-btn {
+      .ship-btn {
         border: 2px solid;
         border-color: #fff #808080 #808080 #fff;
         background: #c0c0c0;
-        padding: 10px 8px;
-        font-size: 13px;
+        padding: 8px 10px;
+        font-size: 12px;
         cursor: pointer;
         font-family: inherit;
-        text-align: center;
+        text-align: left;
         line-height: 1.4;
       }
-      .barrel-btn:active {
+      .ship-btn:active {
         border-color: #808080 #fff #fff #808080;
       }
-      .barrel-btn b {
-        display: block;
-        font-size: 18px;
+      .ship-btn.disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
       }
-      .barrel-btn small {
+      .ship-btn b {
+        display: block;
+        font-size: 14px;
+      }
+      .ship-btn small {
+        display: block;
         color: #555;
         font-size: 10px;
+      }
+      .action-btn {
+        border: 2px solid;
+        border-color: #fff #808080 #808080 #fff;
+        background: #c0c0c0;
+        padding: 8px 16px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .action-btn:active {
+        border-color: #808080 #fff #fff #808080;
       }
 
       /* Score overlay */
@@ -380,36 +399,21 @@
       Rotate your device to landscape to play
     </div>
 
-    <!-- Menu overlay — barrel selection -->
+    <!-- Menu overlay — ship selection -->
     <div class="modal-overlay" id="menuOverlay">
       <div class="modal">
         <h2>&#9875; Hormuz Navigator</h2>
         <p>
-          Select your cargo load.<br />
-          More barrels = more danger, more reward!
+          Choose your tanker.<br />
+          Bigger ships haul more oil but face heavier attacks.
         </p>
-        <div class="barrel-grid">
-          <button class="barrel-btn" onclick="startRound(10)">
-            <b>10</b> barrels
-            <small>Easy — 1× score</small>
-          </button>
-          <button class="barrel-btn" onclick="startRound(25)">
-            <b>25</b> barrels
-            <small>Medium — 2.5× score</small>
-          </button>
-          <button class="barrel-btn" onclick="startRound(50)">
-            <b>50</b> barrels
-            <small>Hard — 5× score</small>
-          </button>
-          <button class="barrel-btn" onclick="startRound(100)">
-            <b>100</b> barrels
-            <small>Insane — 10× score</small>
-          </button>
+        <div class="ship-selector" id="shipSelector">
+          <!-- Populated dynamically by game.js -->
         </div>
         <p style="font-size:11px;color:#555">
           Bank: <b id="cumulativeScoreDisplay">$6,000,000</b>
         </p>
-        <button class="barrel-btn" onclick="startTestMode()" style="padding:4px 12px;font-size:11px;opacity:0.6;margin-top:4px">
+        <button class="action-btn" onclick="startTestMode()" style="padding:4px 12px;font-size:11px;opacity:0.6;margin-top:4px">
           Test mode <small>(skip mines)</small>
         </button>
       </div>
@@ -424,10 +428,10 @@
           <tr><td>Runs completed</td><td id="returningTurns">—</td></tr>
         </table>
         <div class="score-actions">
-          <button class="barrel-btn" onclick="continueGame()" style="padding:8px 16px">
+          <button class="action-btn" onclick="continueGame()">
             Continue
           </button>
-          <button class="barrel-btn" onclick="cashOut()" style="padding:8px 16px">
+          <button class="action-btn" onclick="cashOut()">
             Retire
           </button>
         </div>
@@ -437,19 +441,19 @@
     <!-- Score overlay -->
     <div class="modal-overlay" id="scoreOverlay">
       <div class="modal">
-        <h2>&#127942; Round Complete!</h2>
+        <h2>&#127942; Cargo Delivered!</h2>
         <table class="score-table">
-          <tr><td>Barrels</td><td id="scoreBarrels">—</td></tr>
+          <tr><td>Ship</td><td id="scoreShipName">—</td></tr>
+          <tr><td>FPVs shot down</td><td id="scoreFpvKills">—</td></tr>
           <tr><td>Shaheds destroyed</td><td id="scoreShahedKills">—</td></tr>
-          <tr><td>Multiplier</td><td id="scoreMultiplier">—</td></tr>
-          <tr><td>Round earnings</td><td id="scoreRound">—</td></tr>
+          <tr><td>Cargo value</td><td id="scoreRound">—</td></tr>
           <tr><td>Bank balance</td><td id="scoreTotal">—</td></tr>
         </table>
         <div class="score-actions">
-          <button class="barrel-btn" onclick="goAgain()" style="padding:8px 16px">
+          <button class="action-btn" onclick="goAgain()">
             Go again
           </button>
-          <button class="barrel-btn" onclick="cashOut()" style="padding:8px 16px">
+          <button class="action-btn" onclick="cashOut()">
             Cash out
           </button>
         </div>
@@ -468,9 +472,10 @@
           <b>Phase 2 — Transit</b><br />
           Your ship sails through the cleared path.<br />
           Use ↑/↓ to speed up or reverse. Space to stop.<br />
-          Click shaheds (drones) to destroy them before they hit you!<br />
-          Dodge missiles by changing speed.<br /><br />
-          More barrels = harder but higher score multiplier.
+          Click FPV drones to shoot them down (shotgun)!<br />
+          Bigger ships have a gunner — click shaheds to destroy them (auto cannon).<br />
+          Dodge missiles by changing speed — no defense against those.<br />
+          One hit = game over. Bigger ships = more cargo but more threats.
         </p>
         <button
           onclick="document.getElementById('helpModal').classList.remove('active')"
@@ -482,6 +487,7 @@
 
     <script src="js/zzfx.js"></script>
     <script src="js/map.js"></script>
+    <script src="js/ships.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/minesweeper.js"></script>
     <script src="js/transit.js"></script>

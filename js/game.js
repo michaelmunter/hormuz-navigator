@@ -4,13 +4,13 @@
 
   // Game states: MENU, MINESWEEPER, TRANSIT_FORWARD, TRANSIT_RETURN, SCORE, GAMEOVER
   G.state = 'MENU';
-  G.barrels = 50;
+  G.activeShip = null; // current ship tier object for active run
   G.cumulativeScore = 0;
   G.roundScore = 0;
 
   // --- Player state & persistence ---
   var SAVE_KEY = 'hormuz_save';
-  var SAVE_VERSION = 1;
+  var SAVE_VERSION = 2;
   var STARTING_BANK = 6000000; // $6M — enough for The Rustbucket ($5M) + a crew hire
 
   G.player = null;
@@ -49,8 +49,11 @@
   };
 
   G.migrateSave = function (data) {
-    // Version 1 is baseline, no migrations yet
-    // Future: if (data.version < 2) { ... data.version = 2; }
+    if (data.version < 2) {
+      // v1→v2: add ship field (tier number or null)
+      data.player.ship = null;
+      data.version = 2;
+    }
     return data;
   };
 
@@ -100,10 +103,11 @@
   G.oceanImg.src = 'hormuz-ocean.png';
   G.landImg.src = 'hormuz-land.png';
 
-  // Load PNG sprites
+  // Load PNG sprites (ship sprite is set per-round based on ship tier)
   var spriteSrcs = {
     ship: 'sprites/ships/ship-1.png',
     shahed: 'sprites/shahed.png',
+    fpv: 'sprites/shahed.png',   // placeholder — reuses shahed sprite at smaller size
     missile: 'sprites/missile.png',
     shahedExploding: 'sprites/shahed-exploding.png',
     explosion: 'sprites/explosion.png',
@@ -140,6 +144,34 @@
     document.getElementById('menuOverlay').classList.add('active');
     document.getElementById('returningOverlay').classList.remove('active');
     document.getElementById('cumulativeScoreDisplay').textContent = G.formatMoney(G.player.bank);
+    G.buildShipSelector();
+  };
+
+  G.buildShipSelector = function () {
+    var container = document.getElementById('shipSelector');
+    if (!container) return;
+    container.innerHTML = '';
+    var bank = G.player.bank;
+    for (var i = 0; i < G.SHIP_TIERS.length; i++) {
+      var s = G.SHIP_TIERS[i];
+      var canAfford = bank >= s.cost;
+      var btn = document.createElement('button');
+      btn.className = 'ship-btn' + (canAfford ? '' : ' disabled');
+      btn.disabled = !canAfford;
+      btn.setAttribute('data-tier', s.tier);
+      var weapons = 'Shotgun';
+      if (s.hasGunner) weapons += ' + Auto Cannon';
+      btn.innerHTML =
+        '<b>' + s.name + '</b>' +
+        '<small>' + s.shipClass + ' &mdash; ' + G.formatMoney(s.cost) + '</small>' +
+        '<small>Cargo: ' + G.formatMoney(s.cargoValue) + ' | ' + weapons + '</small>';
+      if (canAfford) {
+        (function (tier) {
+          btn.onclick = function () { G.startRound(tier); };
+        })(s.tier);
+      }
+      container.appendChild(btn);
+    }
   };
 
   G.showReturningMenu = function () {
@@ -151,12 +183,21 @@
     document.getElementById('returningTurns').textContent = G.player.turn;
   };
 
-  G.startRound = function (barrels) {
-    G.barrels = barrels;
+  G.startRound = function (tier) {
+    var ship = G.getShipTier(tier);
+    if (!ship || G.player.bank < ship.cost) return;
+
+    G.activeShip = ship;
+    G.player.ship = tier;
+    G.player.bank -= ship.cost;
+
+    // Load ship sprite
+    G.sprites.ship.src = ship.sprite;
+
     document.getElementById('menuOverlay').classList.remove('active');
     G.state = 'MINESWEEPER';
-    var cfg = G.BARREL_CONFIG[barrels];
-    G.initMinesweeper(cfg.mineRatio);
+    var diff = G.getDifficulty(G.player.turn);
+    G.initMinesweeper(diff.mineRatio);
     G.player.inRun = true;
     G.savePlayer(); // committed to this run — closing tab now = lost run
   };
@@ -164,13 +205,10 @@
   // Called from transit.js when forward leg completes and then return leg completes
   G.showScore = function () {
     var t = G.transit;
-    var cfg = G.BARREL_CONFIG[G.barrels];
+    var ship = G.activeShip;
     G.state = 'SCORE';
 
-    var base = 1000;
-    var timePenalty = t.transitSeconds * 2;
-    var shahedBonus = t.shahedKills * 50;
-    G.roundScore = Math.max(0, Math.floor((base - timePenalty + shahedBonus) * cfg.multiplier));
+    G.roundScore = ship.cargoValue;
     G.player.bank += G.roundScore;
     G.player.turn++;
     G.player.inRun = false;
@@ -179,10 +217,10 @@
     G.resetCounterStyle();
 
     // Show score overlay
+    document.getElementById('scoreShipName').textContent = ship.name;
     document.getElementById('scoreRound').textContent = G.formatMoney(G.roundScore);
+    document.getElementById('scoreFpvKills').textContent = t.fpvKills;
     document.getElementById('scoreShahedKills').textContent = t.shahedKills;
-    document.getElementById('scoreBarrels').textContent = G.barrels;
-    document.getElementById('scoreMultiplier').textContent = cfg.multiplier + '×';
     document.getElementById('scoreTotal').textContent = G.formatMoney(G.player.bank);
     document.getElementById('scoreOverlay').classList.add('active');
 
@@ -265,9 +303,10 @@
     navigator.serviceWorker.register('sw.js').catch(function () {});
   }
 
-  // Test mode: skip minesweeper, go straight to transit
+  // Test mode: skip minesweeper, go straight to transit (uses tier 4 for mid-range difficulty)
   G.startTestMode = function () {
-    G.barrels = 50;
+    G.activeShip = G.getShipTier(4);
+    G.sprites.ship.src = G.activeShip.sprite;
     document.getElementById('menuOverlay').classList.remove('active');
     G.state = 'MINESWEEPER';
     G.initMinesweeper(0); // no mines
@@ -313,7 +352,7 @@
   // Expose for HTML onclick
   window.newGame = G.newGame;
   window.showHelp = G.showHelp;
-  window.startRound = function (b) { G.startRound(b); };
+  window.startRound = function (tier) { G.startRound(tier); };
   window.startTestMode = function () { G.startTestMode(); };
   window.goAgain = function () { G.goAgain(); };
   window.cashOut = function () { G.cashOut(); };

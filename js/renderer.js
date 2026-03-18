@@ -17,6 +17,12 @@
     '#ff9090', '#60ffff', '#ffffff', '#c0c0c0'
   ];
 
+  // Offscreen buffers for flicker-free rendering
+  var _spriteBuffer = null;
+  var _sbctx = null;
+  var _gameBuffer = null;
+  var _gbctx = null;
+
   G.initCanvases = function () {
     G.oceanCanvas = document.getElementById('oceanCanvas');
     G.gameCanvas = document.getElementById('gameCanvas');
@@ -33,6 +39,15 @@
       cv.width = canvasW;
       cv.height = canvasH;
     });
+    // Size offscreen buffers to match
+    _spriteBuffer = document.createElement('canvas');
+    _spriteBuffer.width = canvasW;
+    _spriteBuffer.height = canvasH;
+    _sbctx = _spriteBuffer.getContext('2d');
+    _gameBuffer = document.createElement('canvas');
+    _gameBuffer.width = canvasW;
+    _gameBuffer.height = canvasH;
+    _gbctx = _gameBuffer.getContext('2d');
     document.getElementById('boardWrap').style.width = canvasW + 'px';
     document.getElementById('boardWrap').style.height = canvasH + 'px';
   };
@@ -176,19 +191,20 @@
   // Ship sprite has bow pointing UP (-π/2 direction).
   // shipAngle is the heading in radians (0 = rightward, π/2 = downward).
   // Size is derived from the image's aspect ratio, scaled to a fixed length in cells.
-  var SHIP_LENGTH_CELLS = 3; // ship length (bow-to-stern) in grid cells
+  var BASE_SHIP_LENGTH = 1.8; // ship length in grid cells for gridWidth 1
 
   G.drawShip = function (px, py, shipAngle) {
     var CELL = G.CELL;
     var img = G.sprites.ship;
     var ctx = G.sctx;
     if (!img.complete || !img.naturalWidth) return;
-    // Image height = length (bow-to-stern), width = beam (side-to-side)
-    var len = CELL * SHIP_LENGTH_CELLS;
+    // Scale ship size by gridWidth
+    var gw = (G.activeShip && G.activeShip.gridWidth) || 1;
+    var lengthCells = BASE_SHIP_LENGTH + (gw - 1) * 0.6;
+    var len = CELL * lengthCells;
     var beam = len * (img.naturalWidth / img.naturalHeight);
     ctx.save();
     ctx.translate(px, py);
-    // Sprite bow points up (-π/2), so rotate by (shipAngle + π/2) to point bow in heading direction
     ctx.rotate(shipAngle + Math.PI / 2);
     ctx.drawImage(img, -beam / 2, -len / 2, beam, len);
     ctx.restore();
@@ -200,44 +216,59 @@
     G.drawShip(px, py, shipAngle);
     // Explosion overlay on top
     var CELL = G.CELL;
-    var size = CELL * 4;
     var img = G.sprites.explosion;
     var ctx = G.sctx;
     if (!img.complete || !img.naturalWidth) return;
+    var w = CELL * 4;
+    var h = w * (img.naturalHeight / img.naturalWidth);
     ctx.save();
     ctx.translate(px, py);
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
   };
 
-  // Missile SVG faces UP (nose at top = -π/2 direction).
+  // Missile sprite faces UP (nose at top = -π/2 direction).
   G.drawMissile = function (mx, my, angle) {
     var CELL = G.CELL;
-    var w = CELL * 2.2, h = CELL * 2.8;
-    drawSprite(G.sprites.missile, mx, my, w, h, angle);
+    var img = G.sprites.missile;
+    var w = CELL * 2.2;
+    var h = w * (img.naturalHeight / img.naturalWidth);
+    drawSprite(img, mx, my, w, h, angle);
   };
 
-  // Shahed SVG faces UP (nose at top = -π/2 direction).
+  // Shahed sprite faces UP (nose at top = -π/2 direction).
   G.drawShahed = function (sx, sy, angle) {
     var CELL = G.CELL;
-    var w = CELL * 4, h = CELL * 3.5;
-    drawSprite(G.sprites.shahed, sx, sy, w, h, angle);
+    var img = G.sprites.shahed;
+    var w = CELL * 4;
+    var h = w * (img.naturalHeight / img.naturalWidth);
+    drawSprite(img, sx, sy, w, h, angle);
+  };
+
+  // FPV drone — smaller than shahed, uses fpv sprite (falls back to shahed sprite)
+  G.drawFpv = function (fx, fy, angle) {
+    var CELL = G.CELL;
+    var img = G.sprites.fpv || G.sprites.shahed;
+    var w = CELL * 2;
+    var h = w * (img.naturalHeight / img.naturalWidth);
+    drawSprite(img, fx, fy, w, h, angle);
   };
 
   // Effects (explosion, splash) — drawn without rotation, just centered
   G.drawEffect = function (effect) {
     var CELL = G.CELL;
-    var size = CELL * effect.size;
     var img = effect.type === 'shahed_explode' ? G.sprites.shahedExploding
             : effect.type === 'missile_blast' ? G.sprites.explosion
             : G.sprites.missileOceanDrop;
+    if (!img.complete || !img.naturalWidth) return;
+    var w = CELL * effect.size;
+    var h = w * (img.naturalHeight / img.naturalWidth);
     var alpha = effect.life / effect.maxLife; // fade out
     var ctx = G.sctx;
-    if (!img.complete || !img.naturalWidth) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(effect.x, effect.y);
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
   };
 
@@ -247,9 +278,15 @@
   };
 
   G.drawTransitBoard = function (transit) {
-    const ctx = G.gctx;
-    ctx.clearRect(0, 0, G.gameCanvas.width, G.gameCanvas.height);
-    G.sctx.clearRect(0, 0, G.spriteCanvas.width, G.spriteCanvas.height);
+    var w = G.gameCanvas.width, h = G.gameCanvas.height;
+
+    // Draw to offscreen buffers, then blit — prevents flicker
+    var realGctx = G.gctx, realSctx = G.sctx;
+    G.gctx = _gbctx;
+    G.sctx = _sbctx;
+    var ctx = G.gctx;
+    ctx.clearRect(0, 0, w, h);
+    G.sctx.clearRect(0, 0, w, h);
 
     // Subtle path highlight on clean ocean (no cell grid)
     if (transit.path) {
@@ -266,14 +303,22 @@
       shipPx = curCell[1] * G.CELL + G.CELL / 2;
       shipPy = curCell[0] * G.CELL + G.CELL / 2;
 
-      // Interpolate toward next cell using moveAccum (0..1)
-      var nextIdx = Math.min(transit.shipPos + 1, transit.path.length - 1);
-      if (nextIdx !== transit.shipPos && transit.moveAccum > 0) {
-        var nextCell = transit.path[nextIdx];
-        var nextPx = nextCell[1] * G.CELL + G.CELL / 2;
-        var nextPy = nextCell[0] * G.CELL + G.CELL / 2;
-        shipPx += (nextPx - shipPx) * transit.moveAccum;
-        shipPy += (nextPy - shipPy) * transit.moveAccum;
+      // Interpolate between path cells using moveAccum (-1..1)
+      // Positive: lerp toward next cell; negative: lerp toward previous cell
+      if (transit.moveAccum > 0) {
+        var fwdIdx = Math.min(transit.shipPos + 1, transit.path.length - 1);
+        if (fwdIdx !== transit.shipPos) {
+          var fwdCell = transit.path[fwdIdx];
+          shipPx += (fwdCell[1] * G.CELL + G.CELL / 2 - shipPx) * transit.moveAccum;
+          shipPy += (fwdCell[0] * G.CELL + G.CELL / 2 - shipPy) * transit.moveAccum;
+        }
+      } else if (transit.moveAccum < 0) {
+        var bwdIdx = Math.max(transit.shipPos - 1, 0);
+        if (bwdIdx !== transit.shipPos) {
+          var bwdCell = transit.path[bwdIdx];
+          shipPx += (bwdCell[1] * G.CELL + G.CELL / 2 - shipPx) * (-transit.moveAccum);
+          shipPy += (bwdCell[0] * G.CELL + G.CELL / 2 - shipPy) * (-transit.moveAccum);
+        }
       }
 
       if (!transit.dead) {
@@ -317,6 +362,12 @@
       G.drawMissile(m.x, m.y, mAngle);
     }
 
+    // Draw FPV drones — smaller, angle toward ship
+    for (const f of transit.fpvs) {
+      var fAngle = Math.atan2(shipPy - f.y, shipPx - f.x) + Math.PI / 2;
+      G.drawFpv(f.x, f.y, fAngle);
+    }
+
     // Draw shaheds on top — angle toward ship, SVG faces up (-π/2)
     for (const s of transit.shaheds) {
       var sAngle = Math.atan2(shipPy - s.y, shipPx - s.x) + Math.PI / 2;
@@ -328,5 +379,14 @@
       G.drawEffect(e);
     }
 
+    // No HP bar — one-hit-kill model (1 HP)
+
+    // Blit offscreen buffers to visible canvases in one operation
+    G.gctx = realGctx;
+    G.sctx = realSctx;
+    G.gctx.clearRect(0, 0, w, h);
+    G.gctx.drawImage(_gameBuffer, 0, 0);
+    G.sctx.clearRect(0, 0, w, h);
+    G.sctx.drawImage(_spriteBuffer, 0, 0);
   };
 })();

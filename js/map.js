@@ -16,6 +16,7 @@
   G.sprites = {
     ship: new Image(),
     shahed: new Image(),
+    fpv: new Image(),
     missile: new Image(),
     shahedExploding: new Image(),
     explosion: new Image(),
@@ -88,12 +89,12 @@
 
   // BFS through all ocean to find a carveable path (ignoring mines)
   G.findCarvePath = function () {
-    const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
+    const rows = G.rows, cols = G.cols;
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
     const queue = [];
     for (let r = 0; r < rows; r++) {
-      if (oceanMask[r][0]) {
+      if (G.oceanMask[r][0]) {
         queue.push([r, 0]);
         visited[r][0] = true;
       }
@@ -111,7 +112,7 @@
           if (dr === 0 && dc === 0) continue;
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-              !visited[nr][nc] && oceanMask[nr][nc]) {
+              !visited[nr][nc] && G.oceanMask[nr][nc]) {
             visited[nr][nc] = true;
             parent[nr][nc] = [r, c];
             queue.push([nr, nc]);
