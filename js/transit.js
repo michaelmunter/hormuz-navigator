@@ -312,7 +312,8 @@
           t.missiles.push({
             x: spawnX, y: spawnY,
             vx: (dx / dist) * missileSpeed, vy: (dy / dist) * missileSpeed,
-            targetX: targetX, targetY: targetY
+            targetX: targetX, targetY: targetY,
+            trail: []
           });
           G.sounds.missileIncoming();
         }
@@ -328,7 +329,7 @@
         var fromTop = Math.random() > 0.5;
         var sx = fromTop ? Math.random() * G.gameCanvas.width : G.gameCanvas.width;
         var sy = fromTop ? 0 : Math.random() * G.gameCanvas.height * 0.85;
-        t.shaheds.push({ x: sx, y: sy, alive: true });
+        t.shaheds.push({ x: sx, y: sy, alive: true, trail: [] });
       }
     }
 
@@ -354,6 +355,8 @@
       var m = t.missiles[i];
       m.x += m.vx * dt;
       m.y += m.vy * dt;
+      m.trail.push({ x: m.x, y: m.y });
+      if (m.trail.length > 12) m.trail.shift();
 
       // Check if missile reached or passed its target impact point
       // Dot product of velocity with (target - position): negative means overshot
@@ -388,6 +391,9 @@
       }
       f.x += (fdx / fdist) * fpvSpeed * dt;
       f.y += (fdy / fdist) * fpvSpeed * dt;
+      if (!f.trail) f.trail = [];
+      f.trail.push({ x: f.x, y: f.y });
+      if (f.trail.length > 8) f.trail.shift();
     }
 
     // Update shaheds (move toward ship)
@@ -404,6 +410,8 @@
       }
       s.x += (sdx / sdist) * shahedSpeed * dt;
       s.y += (sdy / sdist) * shahedSpeed * dt;
+      s.trail.push({ x: s.x, y: s.y });
+      if (s.trail.length > 10) s.trail.shift();
     }
 
     // Update effects (tick lifetime, remove expired)

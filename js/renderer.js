@@ -250,7 +250,7 @@
   G.drawMissile = function (mx, my, angle) {
     var CELL = G.CELL;
     var img = G.sprites.missile;
-    var w = CELL * 2.2;
+    var w = CELL * 0.7;
     var h = w * (img.naturalHeight / img.naturalWidth);
     drawSprite(img, mx, my, w, h, angle);
   };
@@ -259,7 +259,7 @@
   G.drawShahed = function (sx, sy, angle) {
     var CELL = G.CELL;
     var img = G.sprites.shahed;
-    var w = CELL * 4;
+    var w = CELL * 1.2;
     var h = w * (img.naturalHeight / img.naturalWidth);
     drawSprite(img, sx, sy, w, h, angle);
   };
@@ -268,7 +268,7 @@
   G.drawFpv = function (fx, fy, angle) {
     var CELL = G.CELL;
     var img = G.sprites.fpv || G.sprites.shahed;
-    var w = CELL * 2;
+    var w = CELL * 1.44;
     var h = w * (img.naturalHeight / img.naturalWidth);
     drawSprite(img, fx, fy, w, h, angle);
   };
@@ -276,14 +276,55 @@
   // Effects (explosion, splash) — drawn without rotation, just centered
   G.drawEffect = function (effect) {
     var CELL = G.CELL;
-    var img = effect.type === 'shahed_explode' ? G.sprites.shahedExploding
-            : effect.type === 'missile_blast' ? G.sprites.explosion
-            : G.sprites.missileOceanDrop;
+    var alpha = effect.life / effect.maxLife; // 1 → 0 over lifetime
+    var ctx = G.sctx;
+
+    if (effect.type === 'ocean_drop') {
+      // Procedural water splash — expanding ripple rings
+      var progress = 1 - alpha; // 0 → 1 over lifetime
+      var maxR = CELL * effect.size * 0.5;
+      ctx.save();
+      ctx.translate(effect.x, effect.y);
+
+      // 3 concentric ripple rings expanding outward
+      ctx.lineWidth = 1.5;
+      for (var ring = 0; ring < 3; ring++) {
+        var ringDelay = ring * 0.15;
+        var ringProgress = Math.max(0, progress - ringDelay) / (1 - ringDelay);
+        if (ringProgress <= 0 || ringProgress >= 1) continue;
+        var r = maxR * (0.2 + 0.8 * ringProgress);
+        var ringAlpha = (1 - ringProgress) * 0.6 * alpha;
+        ctx.globalAlpha = ringAlpha;
+        ctx.strokeStyle = 'rgba(200, 220, 255, 0.9)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r, r * 0.45, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Spray droplets
+      if (progress < 0.6) {
+        ctx.globalAlpha = (1 - progress / 0.6) * 0.5;
+        ctx.fillStyle = '#cde';
+        for (var d = 0; d < 6; d++) {
+          var angle = (d / 6) * Math.PI * 2 + effect.x * 0.1; // pseudo-random per effect
+          var dropR = maxR * 0.3 * progress * 2;
+          var dx = Math.cos(angle) * dropR;
+          var dy = Math.sin(angle) * dropR * 0.45 - CELL * 0.3 * (1 - progress * 1.5);
+          ctx.beginPath();
+          ctx.arc(dx, dy, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // Sprite-based effects (explosions)
+    var img = G.sprites.explosion;
     if (!img.complete || !img.naturalWidth) return;
     var w = CELL * effect.size;
     var h = w * (img.naturalHeight / img.naturalWidth);
-    var alpha = effect.life / effect.maxLife; // fade out
-    var ctx = G.sctx;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(effect.x, effect.y);
@@ -371,6 +412,47 @@
       sctx.setLineDash([]);
       sctx.restore();
     }
+
+    // --- Draw propulsion trails (behind sprites) ---
+    var CELL = G.CELL;
+
+    // Missile exhaust — flickering orange/yellow trail behind the missile
+    var now = performance.now() * 0.006;
+    for (const m of transit.missiles) {
+      if (!m.trail || m.trail.length < 2) continue;
+      for (var ti = 0; ti < m.trail.length - 1; ti++) {
+        var t_pt = m.trail[ti];
+        var frac = ti / m.trail.length; // 0 = oldest, 1 = newest
+        var flicker = 0.7 + 0.3 * Math.sin(now + ti * 2.5);
+        var r = CELL * 0.2 * (0.3 + 0.7 * frac) * flicker;
+        sctx.globalAlpha = 0.5 * frac * flicker;
+        // Vary color: yellow core near missile, orange/red further back
+        var red = 255;
+        var green = Math.round(100 + 155 * frac);
+        var blue = frac > 0.7 ? Math.round(60 * (frac - 0.7) / 0.3) : 0;
+        sctx.fillStyle = 'rgb(' + red + ',' + green + ',' + blue + ')';
+        sctx.beginPath();
+        sctx.arc(t_pt.x, t_pt.y, r, 0, Math.PI * 2);
+        sctx.fill();
+      }
+    }
+    sctx.globalAlpha = 1;
+
+    // Shahed smoke — grey puffs, slightly larger
+    for (const s of transit.shaheds) {
+      if (!s.trail || s.trail.length < 2) continue;
+      for (var ti = 0; ti < s.trail.length; ti++) {
+        var t_pt = s.trail[ti];
+        var frac = ti / s.trail.length;
+        var r = CELL * 0.25 * (0.4 + 0.6 * frac);
+        sctx.globalAlpha = 0.35 * frac;
+        sctx.fillStyle = '#888';
+        sctx.beginPath();
+        sctx.arc(t_pt.x, t_pt.y, r, 0, Math.PI * 2);
+        sctx.fill();
+      }
+    }
+    sctx.globalAlpha = 1;
 
     // Draw missiles on top — angle from velocity, SVG faces up (-π/2)
     for (const m of transit.missiles) {

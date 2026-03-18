@@ -18,7 +18,6 @@
     shahed: new Image(),
     fpv: new Image(),
     missile: new Image(),
-    shahedExploding: new Image(),
     explosion: new Image(),
     missileOceanDrop: new Image()
   };

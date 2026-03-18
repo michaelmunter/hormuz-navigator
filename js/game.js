@@ -107,9 +107,8 @@
   var spriteSrcs = {
     ship: 'sprites/ships/ship-1.png',
     shahed: 'sprites/shahed.png',
-    fpv: 'sprites/shahed.png',   // placeholder — reuses shahed sprite at smaller size
+    fpv: 'sprites/fpv.png',
     missile: 'sprites/missile.png',
-    shahedExploding: 'sprites/shahed-exploding.png',
     explosion: 'sprites/explosion.png',
     missileOceanDrop: 'sprites/missile_oceandrop.png'
   };
@@ -303,10 +302,12 @@
     navigator.serviceWorker.register('sw.js').catch(function () {});
   }
 
-  // Test mode: skip minesweeper, go straight to transit (uses tier 4 for mid-range difficulty)
+  // Test mode: skip minesweeper, go straight to transit
+  // Uses turn 5 to unlock all threat types (FPV + shaheds + missiles) at base rates
   G.startTestMode = function () {
     G.activeShip = G.getShipTier(4);
     G.sprites.ship.src = G.activeShip.sprite;
+    G.player.turn = 5;
     document.getElementById('menuOverlay').classList.remove('active');
     G.state = 'MINESWEEPER';
     G.initMinesweeper(0); // no mines
