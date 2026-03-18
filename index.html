@@ -207,42 +207,6 @@
         border-color: #808080 #fff #fff #808080;
       }
 
-      /* Ship selector buttons */
-      .ship-selector {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin: 10px 0;
-        max-height: 300px;
-        overflow-y: auto;
-      }
-      .ship-btn {
-        border: 2px solid;
-        border-color: #fff #808080 #808080 #fff;
-        background: #c0c0c0;
-        padding: 8px 10px;
-        font-size: 12px;
-        cursor: pointer;
-        font-family: inherit;
-        text-align: left;
-        line-height: 1.4;
-      }
-      .ship-btn:active {
-        border-color: #808080 #fff #fff #808080;
-      }
-      .ship-btn.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-      .ship-btn b {
-        display: block;
-        font-size: 14px;
-      }
-      .ship-btn small {
-        display: block;
-        color: #555;
-        font-size: 10px;
-      }
       .action-btn {
         border: 2px solid;
         border-color: #fff #808080 #808080 #fff;
@@ -360,6 +324,246 @@
         .rotate-prompt { display: flex; }
         .window { display: none; }
       }
+
+      /* ── Dock Screen ── */
+      .dock-screen {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 150;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      }
+      .dock-screen.active { display: block; }
+
+      .dock-bg {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-image: url('sprites/ports/persiangulf.jpg');
+        background-size: cover;
+        background-position: center;
+        filter: brightness(0.6);
+      }
+
+      .dock-layout {
+        position: relative;
+        display: flex;
+        width: 100%; height: 100%;
+        padding: 16px;
+        gap: 10px;
+      }
+
+      .dock-left {
+        width: 240px;
+        min-width: 200px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .dock-right {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .dock-panel {
+        background: rgba(8, 12, 20, 0.82);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 4px;
+        padding: 10px;
+        color: #d8d8d8;
+        font-size: 12px;
+      }
+
+      .dock-panel h3 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: #7aacde;
+        margin-bottom: 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        padding-bottom: 4px;
+        font-weight: 600;
+      }
+
+      .dock-news { flex: 3; overflow-y: auto; }
+      .dock-log { flex: 2; overflow-y: auto; }
+
+      .news-item {
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        font-size: 11px;
+        line-height: 1.4;
+        color: #b0b8c4;
+      }
+
+      .log-text {
+        font-size: 11px;
+        line-height: 1.5;
+        color: #a0a8b0;
+        font-style: italic;
+      }
+
+      .dock-top {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 0;
+      }
+
+      .dock-ship {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .dock-mid-row {
+        display: flex;
+        gap: 8px;
+      }
+      .dock-equipment { flex: 1; }
+      .dock-crew { flex: 1; }
+
+      .dock-bottom {
+        display: flex;
+        gap: 8px;
+      }
+
+      .dock-fuel { flex: 1; }
+      .dock-bank {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .bank-balance {
+        font-size: 22px;
+        font-weight: 700;
+        color: #4ade80;
+        margin-bottom: 10px;
+        font-family: "Menlo", "Consolas", monospace;
+      }
+
+      .dock-actions {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      /* Dock buttons */
+      .dock-btn {
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.08);
+        color: #d8d8d8;
+        padding: 8px 18px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+        border-radius: 3px;
+        transition: background 0.15s;
+      }
+      .dock-btn:hover { background: rgba(255,255,255,0.15); }
+      .dock-btn:active { background: rgba(255,255,255,0.05); }
+
+      .dock-btn-primary {
+        background: rgba(34, 140, 180, 0.7);
+        border-color: rgba(34, 180, 220, 0.4);
+        color: #fff;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 10px 28px;
+      }
+      .dock-btn-primary:hover { background: rgba(34, 140, 180, 0.9); }
+      .dock-btn-primary.disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .dock-btn-small {
+        font-size: 10px;
+        padding: 4px 10px;
+        opacity: 0.5;
+      }
+
+      /* Ship selector within dock */
+      .dock-ship-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .dock-ship-btn {
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #c8c8c8;
+        padding: 8px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+        text-align: left;
+        line-height: 1.4;
+        border-radius: 3px;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .dock-ship-btn:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,255,255,0.2);
+      }
+      .dock-ship-btn.selected {
+        background: rgba(34, 140, 180, 0.3);
+        border-color: rgba(34, 180, 220, 0.5);
+      }
+      .dock-ship-btn.disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .dock-ship-btn b {
+        display: block;
+        font-size: 13px;
+        color: #e8e8e8;
+      }
+      .dock-ship-btn .ship-meta {
+        display: block;
+        color: #888;
+        font-size: 10px;
+        margin-top: 1px;
+      }
+
+      .placeholder-text {
+        color: #606870;
+        font-size: 11px;
+        font-style: italic;
+      }
+
+      .fuel-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+        font-size: 11px;
+      }
+      .fuel-row .fuel-label { color: #888; }
+      .fuel-row .fuel-value { color: #d8d8d8; font-weight: 600; }
+
+      /* Compact dock for small screens */
+      @media (max-height: 700px) {
+        .dock-layout { padding: 4px; gap: 4px; }
+        .dock-panel { padding: 6px; }
+        .dock-panel h3 { font-size: 9px; margin-bottom: 4px; padding-bottom: 2px; }
+        .dock-left { width: 200px; min-width: 180px; }
+        .dock-ship-btn { padding: 5px 8px; }
+        .dock-ship-btn b { font-size: 11px; }
+        .bank-balance { font-size: 18px; margin-bottom: 6px; }
+        .dock-btn-primary { font-size: 12px; padding: 7px 20px; }
+        .dock-mid-row { gap: 4px; }
+      }
     </style>
   </head>
   <body>
@@ -399,41 +603,52 @@
       Rotate your device to landscape to play
     </div>
 
-    <!-- Menu overlay — ship selection -->
-    <div class="modal-overlay" id="menuOverlay">
-      <div class="modal">
-        <h2>&#9875; Hormuz Navigator</h2>
-        <p>
-          Choose your tanker.<br />
-          Bigger ships haul more oil but face heavier attacks.
-        </p>
-        <div class="ship-selector" id="shipSelector">
-          <!-- Populated dynamically by game.js -->
+    <!-- Dock screen — full viewport overlay -->
+    <div class="dock-screen" id="dockScreen">
+      <div class="dock-bg"></div>
+      <div class="dock-layout">
+        <div class="dock-left">
+          <div class="dock-panel dock-news">
+            <h3>News</h3>
+            <div id="newsEntries"></div>
+          </div>
+          <div class="dock-panel dock-log">
+            <h3>Captain's Log</h3>
+            <div class="log-text" id="logEntries"></div>
+          </div>
         </div>
-        <p style="font-size:11px;color:#555">
-          Bank: <b id="cumulativeScoreDisplay">$6,000,000</b>
-        </p>
-        <button class="action-btn" onclick="startTestMode()" style="padding:4px 12px;font-size:11px;opacity:0.6;margin-top:4px">
-          Test mode <small>(skip mines)</small>
-        </button>
-      </div>
-    </div>
-
-    <!-- Returning player overlay — shown on reload when player has progress -->
-    <div class="modal-overlay" id="returningOverlay">
-      <div class="modal">
-        <h2>&#9875; Welcome Back, Captain</h2>
-        <table class="score-table">
-          <tr><td>Bank balance</td><td id="returningBank">—</td></tr>
-          <tr><td>Runs completed</td><td id="returningTurns">—</td></tr>
-        </table>
-        <div class="score-actions">
-          <button class="action-btn" onclick="continueGame()">
-            Continue
-          </button>
-          <button class="action-btn" onclick="cashOut()">
-            Retire
-          </button>
+        <div class="dock-right">
+          <div class="dock-top">
+            <div class="dock-panel dock-ship">
+              <h3>Ship</h3>
+              <div id="dockShipContent"></div>
+            </div>
+            <div class="dock-mid-row">
+              <div class="dock-panel dock-equipment">
+                <h3>Equipment</h3>
+                <div id="dockEquipment"></div>
+              </div>
+              <div class="dock-panel dock-crew">
+                <h3>Crew</h3>
+                <div id="dockCrew"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dock-bottom">
+            <div class="dock-panel dock-fuel" id="dockFuel">
+              <h3>Fueling</h3>
+              <div id="dockFuelContent"></div>
+            </div>
+            <div class="dock-panel dock-bank">
+              <h3>Bank</h3>
+              <div class="bank-balance" id="dockBankBalance">$6,000,000</div>
+              <div class="dock-actions">
+                <button class="dock-btn dock-btn-primary disabled" id="dockSailBtn" onclick="dockSetSail()">Set Sail</button>
+                <button class="dock-btn" id="dockRetireBtn" onclick="cashOut()">Retire</button>
+              </div>
+              <button class="dock-btn dock-btn-small" onclick="startTestMode()">Test mode</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -488,6 +703,7 @@
     <script src="js/zzfx.js"></script>
     <script src="js/map.js"></script>
     <script src="js/ships.js"></script>
+    <script src="js/dock.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/minesweeper.js"></script>
     <script src="js/transit.js"></script>

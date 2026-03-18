@@ -8,9 +8,9 @@
     {
       tier: 1, name: 'The Rustbucket', shipClass: 'Coastal Tanker',
       cost: 5000000, cargoValue: 8000000, gridWidth: 1,
-      crewCap: 2, slots: 0, hp: 1, speed: 3.5, hasGunner: false,
+      crewCap: 3, slots: 0, hp: 1, speed: 3.5, hasGunner: false,
       sprite: 'sprites/ships/ship-1.png',
-      flavorText: "Iran doesn't even bother with you."
+      flavorText: "Captain, Swimmer, Shotgunner. Iran doesn't even bother with you."
     },
     {
       tier: 2, name: 'The Workhorse', shipClass: 'Handymax',

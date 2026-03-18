@@ -30,24 +30,25 @@ Ships are purchased with earnings. Each ship has a size, cargo capacity, base sp
 
 | Tier | Name | Class | DWT | Barrels | Ship Cost | Cargo Value | Grid Width | Crew | Slots | Notes |
 |------|------|-------|-----|---------|-----------|-------------|------------|------|-------|-------|
-| 1 | The Rustbucket | Coastal Tanker | ~10,000 | ~80K | $5M | ~$8M | 1 cell | 2 | 0 | Tutorial ship. Captain + Trainee only. Iran doesn't even bother with you. |
-| 2 | The Workhorse | Handymax | ~40,000 | ~300K | $20M | ~$30M | 1-2 cells | 3 | 1 | Room for a Gunner. Shaheds start spawning. |
-| 3 | The Canal Runner | Panamax | ~70,000 | ~500K | $40M | ~$50M | 2 cells | 4 | 2 | "Named for the Panama Canal, which is nowhere near here." |
-| 4 | The Bread & Butter | Aframax | ~100,000 | ~750K | $55M | ~$75M | 2-3 cells | 5 | 3 | Iran is paying attention now. Full crew. |
-| 5 | The Big Boy | Suezmax | ~160,000 | ~1M | $80M | ~$100M | 3 cells | 5 | 4 | Named for the Suez Canal, also not here. |
-| 6 | The Whale | VLCC | ~300,000 | ~2M | $120M | ~$200M | 3-4 cells | 5 | 5 | The endgame. One trip doubles your money. One mistake sinks $320M. |
+| 1 | The Rustbucket | Coastal Tanker | ~10,000 | ~80K | $5M | ~$8M | 1 cell | 3 | 0 | Tutorial ship. Captain + Swimmer + Shotgunner. Iran doesn't even bother with you. |
+| 2 | The Workhorse | Handymax | ~40,000 | ~300K | $20M | ~$30M | 1-2 cells | 4 | 1 | Room for a Gunner. Shaheds start spawning. |
+| 3 | The Canal Runner | Panamax | ~70,000 | ~500K | $40M | ~$50M | 2 cells | 5 | 2 | "Named for the Panama Canal, which is nowhere near here." |
+| 4 | The Bread & Butter | Aframax | ~100,000 | ~750K | $55M | ~$75M | 2-3 cells | 6 | 3 | Iran is paying attention now. Full crew. |
+| 5 | The Big Boy | Suezmax | ~160,000 | ~1M | $80M | ~$100M | 3 cells | 6 | 4 | Named for the Suez Canal, also not here. |
+| 6 | The Whale | VLCC | ~300,000 | ~2M | $120M | ~$200M | 3-4 cells | 6 | 5 | The endgame. One trip doubles your money. One mistake sinks $320M. |
 
 ## Crew
 
-Crew members are persistent characters that survive across runs (if they live). Each has a name, a portrait (randomly selected from the sprite pool on hire), and a role. Crew are hired at the dockside and assigned to roles on the ship.
+Crew members are persistent characters that survive across runs (if they live). Each has a name, a portrait (randomly selected from the sprite pool on hire), and a role. All crew are hired at the dockside — including the Captain. Every role counts against the ship's crew capacity.
 
 ### Roles
 
 | Role | Required | Phase | Effect |
 |------|----------|-------|--------|
-| **Captain** | Yes (1 per ship) | Transit | Sails the ship. Every ship needs one. |
-| **Trainee** | Yes (1 per ship) | Minesweeper | Swims ahead to check cells. Provides safe cell reveals. If the trainee hits a mine, they die and you lose the safe-reveal ability for the rest of the phase. In timed mode, you also lose the time spent. |
-| **Gunner** | No | Transit | Shoots shaheds. Shaheds only spawn when a Gunner is aboard — no gunner means no shahed threat, but also no defense when you eventually need one. Fire rate varies by character quirk. |
+| **Captain** | Yes (1 per ship) | Transit | Sails the ship. Every ship needs one. Counts toward crew cap. |
+| **Swimmer** | Yes (1 per ship) | Minesweeper | Swims ahead in a diving mask to physically check cells for mines. Provides safe cell reveals. If the swimmer hits a mine, they die (permadeath) and you lose the safe-reveal ability for the rest of the phase. Visually shown on the map during minesweeper. |
+| **Shotgunner** | Yes (1 per ship) | Transit | Operates the anti-FPV shotgun on deck. Player clicks FPVs, shotgunner fires. Without a shotgunner, FPVs hit unopposed. Cheap and plentiful — the expendable defense role. |
+| **Gunner** | No | Transit | Operates the auto cannon against shaheds. Shaheds only spawn when a Gunner is aboard. Can also shoot FPVs (backup if shotgunner is lost). Unlocks with tier 2+ ships. |
 | **Navigator** | No | Transit | Improves missile trajectory visibility. May reveal shahed spawn points early. |
 | **Engineer** | No | Transit | Provides passive bonuses — extra HP, missile intercept chance, or both. |
 | **Broker** | No | Delivery | Manipulates oil markets. Cargo value gets a multiplier with variance (e.g. 0.8x–1.5x, averaging above 1.0). The gamble role. |
@@ -55,10 +56,24 @@ Crew members are persistent characters that survive across runs (if they live). 
 ### Crew Design Principles
 
 - **Persistent**: Crew survive across runs if the ship makes it back. They're yours until they die.
-- **Permadeath**: Trainee dies on mine hit. Other crew can potentially die during transit (gunner killed by shahed, etc.) — TBD based on playtesting.
+- **Permadeath**: Swimmer dies on mine hit. Shotgunner can be killed by FPV impact. Other crew may die during transit — TBD based on playtesting.
 - **Random recruitment**: When hiring, the game offers a selection of randomly generated crew from the sprite pool. Each has a portrait, a name, and a minor stat quirk (e.g. +15% fire rate, +1 HP, slightly better market odds).
 - **Shipwreck survivors**: When a ship sinks, there's a random chance crew members survive. Shown as a short narrative event: *"Olaf survived, tamed a shark and rode it back to port."* Survived crew return to your roster for the next ship.
-- **Crew capacity**: Ships have a max crew size. Tier 1 fits Captain + Trainee only. Bigger ships fit more specialized roles.
+- **Crew capacity**: Ships have a max crew size. All roles (including Captain) count toward the cap. Tier 1 fits Captain + Swimmer + Shotgunner (3). Bigger ships fit more specialized roles.
+- **Reputation system**: Hiring costs increase with cumulative crew deaths. `hireCost × (1 + 0.1 × totalCrewDeaths)`. Word gets around the docks when captains get their people killed.
+- **Crew selection**: On new game, all starting roles are available. Crew persist between runs and are remembered — player only edits the roster when making changes (replacing dead crew, adding new roles for bigger ships).
+
+### Damage & Loss Rules
+
+| Event | Ship | Equipment | Cargo | Crew |
+|-------|------|-----------|-------|------|
+| Mine hit (swimmer alive) | Fine | Fine | Fine | Swimmer dies (permadeath) |
+| Mine hit (no swimmer) | Run over | Lost | Lost | Random survival |
+| Transit HP → 0 | Sunk | Lost | Lost | Random survival |
+| Transit HP > 0, run complete | Damaged (repair cost) | Fine | Delivered | Fine |
+| FPV hit on shotgunner | Fine | Fine | Fine | Shotgunner dies (permadeath) |
+
+Repair cost is proportional to damage taken (10-20% of ship value per HP lost).
 
 ### Character Quirks
 
@@ -79,7 +94,7 @@ Separate from crew, each tanker has equipment slots for purchased hardware. Equi
 | Module | Paired Role | Effect Without Crew | Effect With Crew |
 |--------|-------------|--------------------|--------------------|
 | Auto-Fire System | Gunner | Reduced fire rate | Full auto-fire at boosted rate |
-| Mine Sensor | Trainee | One safe reveal (auto) | Trainee gets extra safe reveals + sensor glow hint |
+| Mine Sensor | Swimmer | One safe reveal (auto) | Swimmer gets extra safe reveals + sensor glow hint |
 | CIWS (Missile Defense) | Engineer | Low intercept chance | Higher intercept chance |
 | Market Terminal | Broker | Small cargo bonus (flat) | Full variance multiplier (0.8x–1.5x) |
 | Armor Plating | Engineer | Base HP bonus | Larger HP bonus |
@@ -100,29 +115,29 @@ Separate from crew, each tanker has equipment slots for purchased hardware. Equi
 - **Crew costs**: Hiring crew has a cost. Survived crew are free to re-assign.
 - **Score**: Your score is your total bank balance when you retire (cash out). This is what goes on the leaderboard.
 - **New ship**: After a ship is destroyed, you can buy any tanker and equipment you can afford. If you can't afford anything, game over.
-- **Starting funds**: Enough to buy The Rustbucket + hire a Captain and Trainee.
+- **Starting funds**: Enough to buy The Rustbucket + hire a Captain, Swimmer, and Shotgunner.
 
 ## Phases
 
 ### 1. Dockside — Hire & Equip
 
-Player manages their crew roster, purchases a tanker, assigns crew to roles, and fills equipment slots. First game starts with enough money for The Rustbucket, a Captain, and a Trainee.
+Player manages their crew roster, purchases a tanker, assigns crew to roles, and fills equipment slots. First game starts with enough money for The Rustbucket, a Captain, a Swimmer, and a Shotgunner.
 
 ### 2. Minesweeper — Clear the Path
 
 Classic Minesweeper on ocean cells shaped by the Strait of Hormuz geography.
 
 - **Win condition**: Revealed ocean cells form a connected path from the left edge to the right edge. Path must be wide enough for the tanker's grid width.
-- **Lose condition**: Click a mine (if no trainee) or all trainees dead and player clicks a mine.
+- **Lose condition**: Click a mine (if no swimmer) or swimmer dead and player clicks a mine.
 - Land cells are not playable (map texture).
 - Numbers show adjacent mine count (8-directional).
 - Right-click / long-press to flag.
 - Chord click (click revealed number when adjacent flags match) to mass-reveal.
-- First click is always safe (trainee checks it).
+- First click is always safe (swimmer checks it).
 - A mine-free path is always guaranteed to exist.
 - Mine density increases with turns played (not tanker tier).
-- **Trainee**: provides safe reveals. Hitting a mine kills the trainee instead of ending the game — but you lose the safety net for the rest of the phase.
-- **Mine Sensor** equipment: gives additional safe reveals, enhanced with trainee synergy.
+- **Swimmer**: Shown on the map in a diving mask. Provides safe cell reveals by physically swimming to check. Hitting a mine kills the swimmer (permadeath) — you lose the safety net for the rest of the phase.
+- **Mine Sensor** equipment: gives additional safe reveals, enhanced with swimmer synergy.
 
 ### 3. Transit Forward — Run the Strait
 
@@ -131,11 +146,12 @@ After clearing the minesweeper, the tanker sails the strait.
 - Ship follows the shortest revealed path from left to right.
 - Ship auto-advances along the path at its base speed.
 - Player controls: **Forward (speed up)**, **Pause**, **Reverse (back up)**.
-- Keyboard: Arrow Up = forward, Arrow Down = reverse, Space = pause.
+- Keyboard: W = forward, S = reverse, Space = pause. Left hand on keys, right hand on mouse for shooting FPVs.
 
 **Threats:**
+- **FPVs (first-person-view drones)**: Small, fast, cheap. Spawn from early turns. Player clicks to target, **Shotgunner** fires. Without a shotgunner, FPVs hit unopposed. Deal 1 HP damage. The **Gunner** (if aboard) can also shoot FPVs as backup.
 - **Missiles**: Launch from Iranian land cells. Fly toward a fixed impact point (ship's position at launch). Player dodges by changing speed. Trajectory shown as red target circle + dotted line. Deal 1 HP damage on hit. **CIWS** + **Engineer** may intercept.
-- **Shaheds (drones)**: Only spawn if a **Gunner** is aboard. Spawn from land edges. Move toward ship. Player clicks/taps to destroy, Gunner auto-shoots. Deal 2 HP damage on hit. **Auto-Fire** equipment boosts Gunner's rate.
+- **Shaheds (drones)**: Only spawn if a **Gunner** is aboard. Spawn from land edges. Move toward ship. Gunner auto-shoots. Deal 2 HP damage on hit. **Auto-Fire** equipment boosts Gunner's rate.
 
 **Threat intensity scales with tanker tier.**
 
@@ -175,12 +191,13 @@ After ship loss with insufficient funds for any tanker + crew: forced retirement
 
 ## Controls
 
-| Action | Mouse | Touch | Keyboard |
-|----------------|----------------|----------------|--------------|
-| Reveal cell | Left click | Tap | — |
-| Flag cell | Right click | Long press | — |
-| Destroy shahed | Left click | Tap | — |
-| Ship forward | — | — | Arrow Up |
-| Ship reverse | — | — | Arrow Down |
-| Ship pause | — | — | Space |
-| New game | Click face | Click face | — |
+| Action | Mouse | Keyboard | Notes |
+|----------------|----------------|--------------|-------|
+| Reveal cell | Left click | — | Minesweeper phase |
+| Flag cell | Right click | — | Minesweeper phase |
+| Shoot FPV | Left click | — | Shotgunner fires at clicked target |
+| Ship forward | — | W | Left hand on WASD, right on mouse |
+| Ship reverse | — | S | |
+| Ship pause | — | Space | Thumb |
+| Destroy shahed | — | (auto) | Gunner fires automatically if aboard |
+| New game | Click face | — | |

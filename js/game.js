@@ -140,46 +140,13 @@
   G.showMenu = function () {
     G.state = 'MENU';
     G.resetCounterStyle();
-    document.getElementById('menuOverlay').classList.add('active');
-    document.getElementById('returningOverlay').classList.remove('active');
-    document.getElementById('cumulativeScoreDisplay').textContent = G.formatMoney(G.player.bank);
-    G.buildShipSelector();
+    document.getElementById('dockScreen').classList.add('active');
+    G.renderDock();
   };
 
-  G.buildShipSelector = function () {
-    var container = document.getElementById('shipSelector');
-    if (!container) return;
-    container.innerHTML = '';
-    var bank = G.player.bank;
-    for (var i = 0; i < G.SHIP_TIERS.length; i++) {
-      var s = G.SHIP_TIERS[i];
-      var canAfford = bank >= s.cost;
-      var btn = document.createElement('button');
-      btn.className = 'ship-btn' + (canAfford ? '' : ' disabled');
-      btn.disabled = !canAfford;
-      btn.setAttribute('data-tier', s.tier);
-      var weapons = 'Shotgun';
-      if (s.hasGunner) weapons += ' + Auto Cannon';
-      btn.innerHTML =
-        '<b>' + s.name + '</b>' +
-        '<small>' + s.shipClass + ' &mdash; ' + G.formatMoney(s.cost) + '</small>' +
-        '<small>Cargo: ' + G.formatMoney(s.cargoValue) + ' | ' + weapons + '</small>';
-      if (canAfford) {
-        (function (tier) {
-          btn.onclick = function () { G.startRound(tier); };
-        })(s.tier);
-      }
-      container.appendChild(btn);
-    }
-  };
-
+  // Returning players now go straight to the dock screen too
   G.showReturningMenu = function () {
-    G.state = 'MENU';
-    G.resetCounterStyle();
-    document.getElementById('returningOverlay').classList.add('active');
-    document.getElementById('menuOverlay').classList.remove('active');
-    document.getElementById('returningBank').textContent = G.formatMoney(G.player.bank);
-    document.getElementById('returningTurns').textContent = G.player.turn;
+    G.showMenu();
   };
 
   G.startRound = function (tier) {
@@ -193,7 +160,7 @@
     // Load ship sprite
     G.sprites.ship.src = ship.sprite;
 
-    document.getElementById('menuOverlay').classList.remove('active');
+    document.getElementById('dockScreen').classList.remove('active');
     G.state = 'MINESWEEPER';
     var diff = G.getDifficulty(G.player.turn);
     G.initMinesweeper(diff.mineRatio);
@@ -233,13 +200,12 @@
   };
 
   G.continueGame = function () {
-    document.getElementById('returningOverlay').classList.remove('active');
     G.showMenu();
   };
 
   G.cashOut = function () {
     document.getElementById('scoreOverlay').classList.remove('active');
-    document.getElementById('returningOverlay').classList.remove('active');
+    document.getElementById('dockScreen').classList.remove('active');
     G.saveHighScore(G.player.bank);
     G.deleteSave();
     G.player = G.createFreshPlayer();
@@ -258,21 +224,21 @@
     clearInterval(G.ms.timerInterval);
     G.resetCounterStyle();
     document.getElementById('scoreOverlay').classList.remove('active');
+    document.getElementById('dockScreen').classList.remove('active');
 
     // Mark run as over (player abandoned or died)
     G.player.inRun = false;
     G.cumulativeScore = G.player.bank;
 
-    // If player has progress, show continue/cash out menu
+    // If player has progress, save and show dock
     if (G.player.bank !== STARTING_BANK || G.player.turn > 0) {
       G.savePlayer();
-      G.showReturningMenu();
     } else {
       G.deleteSave();
       G.player = G.createFreshPlayer();
       G.cumulativeScore = G.player.bank;
-      G.showMenu();
     }
+    G.showMenu();
   };
 
   // High scores in localStorage
@@ -308,7 +274,7 @@
     G.activeShip = G.getShipTier(4);
     G.sprites.ship.src = G.activeShip.sprite;
     G.player.turn = 5;
-    document.getElementById('menuOverlay').classList.remove('active');
+    document.getElementById('dockScreen').classList.remove('active');
     G.state = 'MINESWEEPER';
     G.initMinesweeper(0); // no mines
     // Reveal all ocean cells
