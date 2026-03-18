@@ -63,3 +63,11 @@ All modules use IIFE pattern writing to `window.Game` namespace. Load order matt
 ## Deployment
 
 Push to `main` triggers GitHub Actions workflow that deploys to GitHub Pages.
+
+## Distribution
+
+- **GitHub Pages** — demo/portfolio link: https://michaelmunter.github.io/hormuz-navigator/
+- **itch.io** — primary home base. Free, good SEO, game jam traffic. Zip and upload.
+- **CrazyGames / Poki** — ad revenue portals (pay per play). Requires their SDK for ad breaks between rounds.
+- **Newgrounds** — active community with built-in ad revenue sharing.
+- **GameJolt** — discovery platform, similar to itch.

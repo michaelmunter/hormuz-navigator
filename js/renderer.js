@@ -81,7 +81,7 @@
         G.drawMine(x, y);
       } else if (ms.grid[r][c] > 0) {
         ctx.fillStyle = NUM_COLORS[ms.grid[r][c]] || '#000';
-        ctx.font = 'bold 13px "Consolas", monospace';
+        ctx.font = 'bold 13px "Menlo", "Consolas", "Courier New", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(ms.grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
@@ -173,34 +173,40 @@
     ctx.restore();
   }
 
-  // Ship SVG faces LEFT. We mirror horizontally when facing right,
-  // and apply a small tilt for vertical path movement.
-  G.drawShip = function (px, py, tilt, facingRight) {
+  // Ship sprite has bow pointing UP (-π/2 direction).
+  // shipAngle is the heading in radians (0 = rightward, π/2 = downward).
+  // Size is derived from the image's aspect ratio, scaled to a fixed length in cells.
+  var SHIP_LENGTH_CELLS = 3; // ship length (bow-to-stern) in grid cells
+
+  G.drawShip = function (px, py, shipAngle) {
     var CELL = G.CELL;
-    var w = CELL * 3, h = CELL * 1.4;
     var img = G.sprites.ship;
     var ctx = G.sctx;
     if (!img.complete || !img.naturalWidth) return;
+    // Image height = length (bow-to-stern), width = beam (side-to-side)
+    var len = CELL * SHIP_LENGTH_CELLS;
+    var beam = len * (img.naturalWidth / img.naturalHeight);
     ctx.save();
     ctx.translate(px, py);
-    if (facingRight) ctx.scale(-1, 1);
-    ctx.rotate(tilt);
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    // Sprite bow points up (-π/2), so rotate by (shipAngle + π/2) to point bow in heading direction
+    ctx.rotate(shipAngle + Math.PI / 2);
+    ctx.drawImage(img, -beam / 2, -len / 2, beam, len);
     ctx.restore();
   };
 
-  // Ship-struck SVG — broken tanker with fire, similar size to ship.
-  G.drawShipStruck = function (px, py, tilt, facingRight) {
+  // Ship destroyed — draw the ship at its last position with an explosion overlay
+  G.drawShipDeath = function (px, py, shipAngle) {
+    // Draw ship in place
+    G.drawShip(px, py, shipAngle);
+    // Explosion overlay on top
     var CELL = G.CELL;
-    var w = CELL * 3.5, h = CELL * 1.8;
-    var img = G.sprites.shipStruck;
+    var size = CELL * 4;
+    var img = G.sprites.explosion;
     var ctx = G.sctx;
     if (!img.complete || !img.naturalWidth) return;
     ctx.save();
     ctx.translate(px, py);
-    if (facingRight) ctx.scale(-1, 1);
-    ctx.rotate(tilt);
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
     ctx.restore();
   };
 
@@ -223,7 +229,7 @@
     var CELL = G.CELL;
     var size = CELL * effect.size;
     var img = effect.type === 'shahed_explode' ? G.sprites.shahedExploding
-            : effect.type === 'missile_blast' ? G.sprites.missileBlast
+            : effect.type === 'missile_blast' ? G.sprites.explosion
             : G.sprites.missileOceanDrop;
     var alpha = effect.life / effect.maxLife; // fade out
     var ctx = G.sctx;
@@ -253,14 +259,25 @@
       }
     }
 
-    // Draw ship — mirrored + tilted (skip if dead, struck sprite drawn separately)
+    // Draw ship — smooth position interpolation between path cells
     var shipPx = 0, shipPy = 0;
     if (transit.shipPos !== null && transit.path) {
-      var sr = transit.path[transit.shipPos];
-      shipPx = sr[1] * G.CELL + G.CELL / 2;
-      shipPy = sr[0] * G.CELL + G.CELL / 2;
+      var curCell = transit.path[transit.shipPos];
+      shipPx = curCell[1] * G.CELL + G.CELL / 2;
+      shipPy = curCell[0] * G.CELL + G.CELL / 2;
+
+      // Interpolate toward next cell using moveAccum (0..1)
+      var nextIdx = Math.min(transit.shipPos + 1, transit.path.length - 1);
+      if (nextIdx !== transit.shipPos && transit.moveAccum > 0) {
+        var nextCell = transit.path[nextIdx];
+        var nextPx = nextCell[1] * G.CELL + G.CELL / 2;
+        var nextPy = nextCell[0] * G.CELL + G.CELL / 2;
+        shipPx += (nextPx - shipPx) * transit.moveAccum;
+        shipPy += (nextPy - shipPy) * transit.moveAccum;
+      }
+
       if (!transit.dead) {
-        G.drawShip(shipPx, shipPy, transit.shipTilt, transit.shipFacingRight);
+        G.drawShip(shipPx, shipPy, transit.shipAngle);
       }
     }
 

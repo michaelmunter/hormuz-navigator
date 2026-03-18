@@ -100,14 +100,18 @@
   G.oceanImg.src = 'hormuz-ocean.png';
   G.landImg.src = 'hormuz-land.png';
 
-  // Load sprites (non-blocking, not required for init)
-  G.sprites.ship.src = 'sprites/ship.svg';
-  G.sprites.shipStruck.src = 'sprites/ship-struck.svg';
-  G.sprites.shahed.src = 'sprites/shahed.svg';
-  G.sprites.missile.src = 'sprites/missile.svg';
-  G.sprites.shahedExploding.src = 'sprites/shahed-exploding.svg';
-  G.sprites.missileBlast.src = 'sprites/missile-blast.svg';
-  G.sprites.missileOceanDrop.src = 'sprites/missile_oceandrop.svg';
+  // Load PNG sprites
+  var spriteSrcs = {
+    ship: 'sprites/ships/ship-1.png',
+    shahed: 'sprites/shahed.png',
+    missile: 'sprites/missile.png',
+    shahedExploding: 'sprites/shahed-exploding.png',
+    explosion: 'sprites/explosion.png',
+    missileOceanDrop: 'sprites/missile_oceandrop.png'
+  };
+  Object.keys(spriteSrcs).forEach(function (name) {
+    G.sprites[name].src = spriteSrcs[name];
+  });
 
   G.initBoard = function () {
     var crop = G.crop;

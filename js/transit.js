@@ -26,7 +26,8 @@
     direction: 'forward',  // 'forward' or 'return'
     path: null,
     shipPos: 0,             // index into path
-    shipSpeed: 0,           // current speed state: -1, 0, 1
+    shipSpeed: 0,           // current actual speed (smoothly interpolated)
+    shipSpeedTarget: 0,     // target speed set by input (-1, 0, 1)
     missiles: [],
     shaheds: [],
     missileTimer: 0,
@@ -36,9 +37,8 @@
     transitTimerInterval: null,
     animFrame: null,
     lastTime: 0,
-    moveAccum: 0,           // accumulates fractional cell movement
-    shipTilt: 0,            // small vertical tilt angle (clamped)
-    shipFacingRight: true,  // mirror direction
+    moveAccum: 0,           // accumulates fractional cell movement (0..1)
+    shipAngle: 0,           // current smooth heading angle (radians)
     effects: [],            // visual effects (explosions, splashes)
     landEdgeCells: null,
     config: null,
@@ -64,7 +64,8 @@
     t.active = true;
     G.state = direction === 'forward' ? 'TRANSIT_FORWARD' : 'TRANSIT_RETURN';
     t.shipPos = 0;
-    t.shipSpeed = 1; // moving forward
+    t.shipSpeed = 1; // start moving forward
+    t.shipSpeedTarget = 1;
     t.missiles = [];
     t.shaheds = [];
     t.effects = [];
@@ -72,16 +73,16 @@
     t.shahedTimer = 0;
     t.moveAccum = 0;
     t.transitSeconds = 0;
-    t.shipTilt = 0;
     t.dead = false;
     t.elapsed = 0;
 
-    // Determine initial facing from path direction
+    // Determine initial heading angle from path direction
     if (t.path.length >= 2) {
+      var dr = t.path[1][0] - t.path[0][0];
       var dc = t.path[1][1] - t.path[0][1];
-      t.shipFacingRight = dc >= 0;
+      t.shipAngle = Math.atan2(dr, dc);
     } else {
-      t.shipFacingRight = true;
+      t.shipAngle = 0;
     }
 
     if (direction === 'forward') {
@@ -134,15 +135,24 @@
     t.effects.push({ type: type, x: x, y: y, size: size, life: duration, maxLife: duration });
   }
 
-  var MAX_TILT = Math.PI / 6; // 30 degrees
+  var SPEED_ACCEL = 3; // how fast shipSpeed approaches target (units/s)
+  var ANGLE_LERP = 4;  // how fast shipAngle approaches target (radians/s factor)
 
   G.updateTransit = function (dt) {
     const t = G.transit;
     const cfg = t.config;
     const returnMult = t.direction === 'return' ? 1.5 : 1.0;
 
+    // Smooth speed: lerp toward target
+    var speedDiff = t.shipSpeedTarget - t.shipSpeed;
+    if (Math.abs(speedDiff) < 0.01) {
+      t.shipSpeed = t.shipSpeedTarget;
+    } else {
+      t.shipSpeed += speedDiff * Math.min(1, dt * SPEED_ACCEL);
+    }
+
     // Move ship
-    if (t.shipSpeed !== 0) {
+    if (Math.abs(t.shipSpeed) > 0.001) {
       t.moveAccum += cfg.speed * t.shipSpeed * dt;
       while (t.moveAccum >= 1) {
         t.moveAccum -= 1;
@@ -156,35 +166,30 @@
         t.moveAccum += 1;
         t.shipPos = Math.max(0, t.shipPos - 1);
       }
+      // Clamp moveAccum to [0,1) range
+      if (t.moveAccum < 0) t.moveAccum = 0;
     }
 
-    // Update ship facing and tilt based on path direction
+    // Update ship heading angle
+    // Always compute from forward path direction (shipPos → shipPos+1).
+    // When reversing, flip by π so the stern leads — the ship visually sails backward.
     var nextIdx = Math.min(t.shipPos + 1, t.path.length - 1);
     if (nextIdx !== t.shipPos) {
       var dr = t.path[nextIdx][0] - t.path[t.shipPos][0];
       var dc = t.path[nextIdx][1] - t.path[t.shipPos][1];
+      var targetAngle = Math.atan2(dr, dc);
 
-      // Facing: determined by horizontal movement and ship speed
-      if (t.shipSpeed > 0 && dc !== 0) {
-        t.shipFacingRight = dc > 0;
-      } else if (t.shipSpeed < 0 && dc !== 0) {
-        t.shipFacingRight = dc < 0; // face opposite when reversing
+      // When reversing, flip 180° so stern faces the direction of travel
+      if (t.shipSpeed < -0.01) {
+        targetAngle += Math.PI;
       }
 
-      // Effective movement direction (accounts for reverse)
-      var effDr = t.shipSpeed >= 0 ? dr : -dr;
-
-      // Tilt: vertical angle clamped to ±30°
-      // Positive tilt = bow points up, negative = bow points down
-      var targetTilt = Math.atan2(Math.abs(dr), Math.abs(dc) || 0.1);
-      targetTilt = Math.min(targetTilt, MAX_TILT);
-      if (effDr < 0) targetTilt = targetTilt;       // moving up → bow up
-      else if (effDr > 0) targetTilt = -targetTilt;  // moving down → bow down
-      else targetTilt = 0;
-
-      // Smooth interpolation
-      var diff = targetTilt - t.shipTilt;
-      t.shipTilt += diff * Math.min(1, dt * 5);
+      // Smooth angle interpolation (handle wrapping)
+      var angleDiff = targetAngle - t.shipAngle;
+      // Normalize to [-π, π]
+      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+      t.shipAngle += angleDiff * Math.min(1, dt * ANGLE_LERP);
     }
 
     // Track elapsed time for grace period and ramp
@@ -356,7 +361,7 @@
     var px = cell[1] * G.CELL + G.CELL / 2;
     var py = cell[0] * G.CELL + G.CELL / 2;
     G.drawTransitBoard(t);
-    G.drawShipStruck(px, py, t.shipTilt, t.shipFacingRight);
+    G.drawShipDeath(px, py, t.shipAngle);
 
     G.player.inRun = false;
     G.savePlayer(); // ship destruction is permanent — run is over
@@ -388,15 +393,15 @@
     if (!t.active) return;
 
     if (key === 'ArrowUp') {
-      t.shipSpeed = 1;
+      t.shipSpeedTarget = 1;
       G.setStatus('Full speed ahead! \u25b6\u25b6', '');
       G.sounds.speedChange();
     } else if (key === 'ArrowDown') {
-      t.shipSpeed = -1;
+      t.shipSpeedTarget = -1;
       G.setStatus('Reversing! \u25c0\u25c0', '');
       G.sounds.speedChange();
     } else if (key === ' ') {
-      t.shipSpeed = 0;
+      t.shipSpeedTarget = 0;
       G.setStatus('All stop! \u23f8', '');
       G.sounds.speedChange();
     }

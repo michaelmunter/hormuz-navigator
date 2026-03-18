@@ -15,11 +15,10 @@
   // Sprite images (loaded in game.js)
   G.sprites = {
     ship: new Image(),
-    shipStruck: new Image(),
     shahed: new Image(),
     missile: new Image(),
     shahedExploding: new Image(),
-    missileBlast: new Image(),
+    explosion: new Image(),
     missileOceanDrop: new Image()
   };
 
