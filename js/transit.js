@@ -312,6 +312,8 @@
     var py = cell[0] * G.CELL + G.CELL / 2;
     G.drawTransitBoard(t);
     G.drawShipStruck(px, py, t.shipTilt, t.shipFacingRight);
+
+    G.savePlayer(); // ship destruction is permanent
   };
 
   // Handle click on shahed during transit

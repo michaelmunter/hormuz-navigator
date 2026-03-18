@@ -30,6 +30,7 @@ manifest.json       — PWA manifest
 Game state machine: `MENU → MINESWEEPER → TRANSIT_FORWARD → TRANSIT_RETURN → SCORE`
 
 All modules use IIFE pattern writing to `window.Game` namespace. Load order matters:
+
 1. map.js (defines `Game` namespace, CELL constant, image loading, ocean mask, pathfinding)
 2. renderer.js (canvas setup, cell/ship/missile drawing)
 3. minesweeper.js (mine logic, reveal, win check)

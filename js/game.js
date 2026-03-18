@@ -8,6 +8,59 @@
   G.cumulativeScore = 0;
   G.roundScore = 0;
 
+  // --- Player state & persistence ---
+  var SAVE_KEY = 'hormuz_save';
+  var SAVE_VERSION = 1;
+  var STARTING_BANK = 6000000; // $6M — enough for The Rustbucket ($5M) + a crew hire
+
+  G.player = null;
+
+  G.createFreshPlayer = function () {
+    return {
+      bank: STARTING_BANK,
+      crew: [],       // placeholder for PR 4
+      ship: null,     // placeholder for PR 3
+      turn: 0,
+      equipment: []   // placeholder for PR 5
+    };
+  };
+
+  G.savePlayer = function () {
+    try {
+      var payload = { version: SAVE_VERSION, player: G.player };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    } catch (e) { /* localStorage unavailable or full */ }
+  };
+
+  G.loadPlayer = function () {
+    try {
+      var raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) { G.player = G.createFreshPlayer(); return; }
+      var data = JSON.parse(raw);
+      if (!data || !data.player) { G.player = G.createFreshPlayer(); return; }
+      if (data.version < SAVE_VERSION) {
+        data = G.migrateSave(data);
+      }
+      G.player = data.player;
+    } catch (e) {
+      G.player = G.createFreshPlayer();
+    }
+  };
+
+  G.migrateSave = function (data) {
+    // Version 1 is baseline, no migrations yet
+    // Future: if (data.version < 2) { ... data.version = 2; }
+    return data;
+  };
+
+  G.deleteSave = function () {
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  };
+
+  G.formatMoney = function (amount) {
+    return '$' + amount.toLocaleString();
+  };
+
   G.setStatus = function (text, className) {
     var el = document.getElementById('statusBar');
     el.textContent = text;
@@ -22,6 +75,8 @@
       G.initCanvases();
       G.initInput();
       G.initBoard();
+      G.loadPlayer();
+      G.cumulativeScore = G.player.bank;
       G.showMenu();
     }
   }
@@ -65,7 +120,7 @@
     G.state = 'MENU';
     G.resetCounterStyle();
     document.getElementById('menuOverlay').classList.add('active');
-    document.getElementById('cumulativeScoreDisplay').textContent = G.cumulativeScore;
+    document.getElementById('cumulativeScoreDisplay').textContent = G.formatMoney(G.player.bank);
   };
 
   G.startRound = function (barrels) {
@@ -74,6 +129,7 @@
     G.state = 'MINESWEEPER';
     var cfg = G.BARREL_CONFIG[barrels];
     G.initMinesweeper(cfg.mineRatio);
+    G.savePlayer(); // committed to this run
   };
 
   // Called from transit.js when forward leg completes and then return leg completes
@@ -86,20 +142,22 @@
     var timePenalty = t.transitSeconds * 2;
     var shahedBonus = t.shahedKills * 50;
     G.roundScore = Math.max(0, Math.floor((base - timePenalty + shahedBonus) * cfg.multiplier));
-    G.cumulativeScore += G.roundScore;
+    G.player.bank += G.roundScore;
+    G.player.turn++;
+    G.cumulativeScore = G.player.bank;
 
     G.resetCounterStyle();
 
     // Show score overlay
-    document.getElementById('scoreRound').textContent = G.roundScore;
+    document.getElementById('scoreRound').textContent = G.formatMoney(G.roundScore);
     document.getElementById('scoreShahedKills').textContent = t.shahedKills;
     document.getElementById('scoreBarrels').textContent = G.barrels;
     document.getElementById('scoreMultiplier').textContent = cfg.multiplier + '×';
-    document.getElementById('scoreTotal').textContent = G.cumulativeScore;
+    document.getElementById('scoreTotal').textContent = G.formatMoney(G.player.bank);
     document.getElementById('scoreOverlay').classList.add('active');
 
-    // Save high score
-    G.saveHighScore(G.cumulativeScore);
+    G.savePlayer(); // successful delivery — earnings locked in
+    G.saveHighScore(G.player.bank);
   };
 
   G.goAgain = function () {
@@ -109,7 +167,10 @@
 
   G.cashOut = function () {
     document.getElementById('scoreOverlay').classList.remove('active');
-    G.cumulativeScore = 0;
+    G.saveHighScore(G.player.bank);
+    G.deleteSave();
+    G.player = G.createFreshPlayer();
+    G.cumulativeScore = G.player.bank;
     G.showMenu();
   };
 
@@ -124,7 +185,9 @@
     clearInterval(G.ms.timerInterval);
     G.resetCounterStyle();
     document.getElementById('scoreOverlay').classList.remove('active');
-    G.cumulativeScore = 0;
+    G.deleteSave();
+    G.player = G.createFreshPlayer();
+    G.cumulativeScore = G.player.bank;
     G.showMenu();
   };
 

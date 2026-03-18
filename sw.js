@@ -1,4 +1,4 @@
-const CACHE = 'hormuz-v12';
+const CACHE = 'hormuz-v13';
 const ASSETS = [
   './',
   './index.html',

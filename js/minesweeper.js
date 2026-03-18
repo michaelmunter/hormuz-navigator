@@ -172,6 +172,8 @@
         }
       }
     }
+
+    G.savePlayer(); // mine hit is permanent
   };
 
   G.onMinesweeperWin = function () {
