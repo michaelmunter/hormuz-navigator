@@ -15,7 +15,7 @@
   G.getDifficulty = function (turn) {
     var t = Math.max(0, turn);
     return {
-      mineRatio:    Math.min(0.30, 0.08 + t * 0.022),            // 0.08 → 0.30 over ~10 turns
+      mineRatio:    Math.min(0.30, 0.18 + t * 0.015),            // 0.18 → 0.30 over ~8 turns
 
       // FPV drones — always available from turn 0
       hasFpv:       true,

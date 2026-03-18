@@ -71,10 +71,43 @@
   };
 
   G.placeMines = function (oceanCells, ms) {
-    const shuffled = oceanCells.slice().sort(() => Math.random() - 0.5);
-    for (let i = 0; i < ms.mineCount; i++) {
-      const [r, c] = shuffled[i];
-      ms.mines[r][c] = true;
+    // Stratified placement: divide ocean into sectors and distribute mines
+    // evenly across them so mines spread across the whole board instead of clumping
+    const SECTOR_ROWS = 6, SECTOR_COLS = 6;
+    const rowStep = Math.ceil(G.rows / SECTOR_ROWS);
+    const colStep = Math.ceil(G.cols / SECTOR_COLS);
+    const sectors = {};
+    for (let i = 0; i < oceanCells.length; i++) {
+      const [r, c] = oceanCells[i];
+      const key = Math.floor(r / rowStep) * SECTOR_COLS + Math.floor(c / colStep);
+      if (!sectors[key]) sectors[key] = [];
+      sectors[key].push([r, c]);
+    }
+    const sectorKeys = Object.keys(sectors);
+    // Shuffle each sector
+    for (let k = 0; k < sectorKeys.length; k++) {
+      sectors[sectorKeys[k]].sort(function () { return Math.random() - 0.5; });
+    }
+    // Distribute mines round-robin across sectors
+    let placed = 0;
+    const sectorIdx = {};
+    for (let k = 0; k < sectorKeys.length; k++) sectorIdx[sectorKeys[k]] = 0;
+    let round = 0;
+    while (placed < ms.mineCount) {
+      let placedThisRound = false;
+      for (let k = 0; k < sectorKeys.length && placed < ms.mineCount; k++) {
+        const key = sectorKeys[k];
+        const cells = sectors[key];
+        if (sectorIdx[key] < cells.length) {
+          const [r, c] = cells[sectorIdx[key]];
+          ms.mines[r][c] = true;
+          sectorIdx[key]++;
+          placed++;
+          placedThisRound = true;
+        }
+      }
+      if (!placedThisRound) break;
+      round++;
     }
 
     if (!G.hasPath(ms.mines)) {
