@@ -123,20 +123,98 @@
     return null;
   };
 
-  // Find shortest revealed path from left to right (for ship transit)
-  G.findRevealedPath = function (revealed) {
+  // Build distance-from-land map: BFS from all land/edge cells.
+  // Each ocean cell gets the minimum Chebyshev distance to the nearest non-ocean cell.
+  G.buildDistanceMap = function () {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
-    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
-    const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
+    const dist = Array.from({ length: rows }, () => Array(cols).fill(0));
     const queue = [];
+    // Seed: all non-ocean cells and border cells have distance 0
     for (let r = 0; r < rows; r++) {
-      if (oceanMask[r][0] && revealed[r][0]) {
-        queue.push([r, 0]);
-        visited[r][0] = true;
+      for (let c = 0; c < cols; c++) {
+        if (!oceanMask[r][c]) {
+          queue.push([r, c]);
+        } else if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) {
+          // Ocean cells at the canvas edge are near "coast" too
+          dist[r][c] = 1;
+          queue.push([r, c]);
+        } else {
+          dist[r][c] = -1; // unvisited ocean
+        }
       }
     }
-    while (queue.length > 0) {
-      const [r, c] = queue.shift();
+    // BFS outward
+    let head = 0;
+    while (head < queue.length) {
+      const [r, c] = queue[head++];
+      const nd = dist[r][c] + 1;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && dist[nr][nc] === -1) {
+            dist[nr][nc] = nd;
+            queue.push([nr, nc]);
+          }
+        }
+      }
+    }
+    G.distanceMap = dist;
+  };
+
+  // Find revealed path from left to right that maximizes distance from coast.
+  // Uses Dijkstra with cost = 1 / (distFromLand + 1), so cells far from land are cheaper.
+  G.findRevealedPath = function (revealed) {
+    const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
+    if (!G.distanceMap) G.buildDistanceMap();
+    const dm = G.distanceMap;
+
+    const INF = 1e18;
+    const cost = Array.from({ length: rows }, () => Array(cols).fill(INF));
+    const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
+
+    // Simple priority queue (binary heap would be better but this is small enough)
+    // Use a sorted insert array — the grid is at most ~60x40 = 2400 cells
+    const heap = []; // [cost, r, c]
+    function heapPush(c, r, col) {
+      heap.push([c, r, col]);
+      // bubble up
+      let i = heap.length - 1;
+      while (i > 0) {
+        const pi = (i - 1) >> 1;
+        if (heap[pi][0] <= heap[i][0]) break;
+        var tmp = heap[pi]; heap[pi] = heap[i]; heap[i] = tmp;
+        i = pi;
+      }
+    }
+    function heapPop() {
+      if (heap.length === 1) return heap.pop();
+      const top = heap[0];
+      heap[0] = heap.pop();
+      let i = 0;
+      while (true) {
+        let smallest = i;
+        const l = 2 * i + 1, ri = 2 * i + 2;
+        if (l < heap.length && heap[l][0] < heap[smallest][0]) smallest = l;
+        if (ri < heap.length && heap[ri][0] < heap[smallest][0]) smallest = ri;
+        if (smallest === i) break;
+        var tmp = heap[smallest]; heap[smallest] = heap[i]; heap[i] = tmp;
+        i = smallest;
+      }
+      return top;
+    }
+
+    for (let r = 0; r < rows; r++) {
+      if (oceanMask[r][0] && revealed[r][0]) {
+        var c0 = 1 / (Math.max(1, dm[r][0]) + 1);
+        cost[r][0] = c0;
+        heapPush(c0, r, 0);
+      }
+    }
+
+    while (heap.length > 0) {
+      const [d, r, c] = heapPop();
+      if (d > cost[r][c]) continue; // stale entry
       if (c === cols - 1) {
         const path = [];
         let cur = [r, c];
@@ -148,10 +226,14 @@
           if (dr === 0 && dc === 0) continue;
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-              !visited[nr][nc] && oceanMask[nr][nc] && revealed[nr][nc]) {
-            visited[nr][nc] = true;
-            parent[nr][nc] = [r, c];
-            queue.push([nr, nc]);
+              oceanMask[nr][nc] && revealed[nr][nc]) {
+            var stepCost = 1 / (Math.max(1, dm[nr][nc]) + 1);
+            var newCost = d + stepCost;
+            if (newCost < cost[nr][nc]) {
+              cost[nr][nc] = newCost;
+              parent[nr][nc] = [r, c];
+              heapPush(newCost, nr, nc);
+            }
           }
         }
       }

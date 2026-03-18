@@ -218,8 +218,20 @@
     document.getElementById('faceBtn').innerHTML = '&#128526;';
 
     G.sounds.minesweeperWin();
-    // Transition to transit phase
-    G.startTransit('forward');
+
+    // Build distance map and compute the transit route
+    G.buildDistanceMap();
+    var path = G.findRevealedPath(ms.revealed);
+    if (path) {
+      // Draw the route on top of the minesweeper board
+      G.drawTransitRoute(path, G.gctx);
+      G.setStatus('Route plotted! Preparing to set sail...', 'win-msg');
+    }
+
+    // Brief delay so player can see the plotted route, then start transit
+    setTimeout(function () {
+      G.startTransit('forward');
+    }, 2000);
   };
 
   // First-click safety: move mine away from first click, then re-verify path

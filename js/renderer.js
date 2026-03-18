@@ -175,6 +175,25 @@
     ctx.fillRect(cx - 3, y + CELL - 7, 6, 2);
   };
 
+  // Draw dashed transit route line through path cell centers
+  G.drawTransitRoute = function (path, ctx) {
+    if (!path || path.length < 2) return;
+    var CELL = G.CELL;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(path[0][1] * CELL + CELL / 2, path[0][0] * CELL + CELL / 2);
+    for (var i = 1; i < path.length; i++) {
+      ctx.lineTo(path[i][1] * CELL + CELL / 2, path[i][0] * CELL + CELL / 2);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  };
+
   // --- Transit phase rendering (SVG sprites with rotation/mirror) ---
 
   // Helper: draw a sprite centered at (px,py) rotated to angle, scaled to w×h
@@ -288,12 +307,9 @@
     ctx.clearRect(0, 0, w, h);
     G.sctx.clearRect(0, 0, w, h);
 
-    // Subtle path highlight on clean ocean (no cell grid)
+    // Draw dashed transit route line
     if (transit.path) {
-      ctx.fillStyle = 'rgba(80, 120, 180, 0.12)';
-      for (const [r, c] of transit.path) {
-        ctx.fillRect(c * G.CELL, r * G.CELL, G.CELL, G.CELL);
-      }
+      G.drawTransitRoute(transit.path, ctx);
     }
 
     // Draw ship — smooth position interpolation between path cells
