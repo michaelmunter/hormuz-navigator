@@ -65,6 +65,15 @@
     speedChange: function () {
       // Quick blip
       playSound([.2,,500,.01,,.02,,.5,,,,,,,,,,,,.01]);
+    },
+    cargoLoad: function () {
+      // Deep pump/flow sound — oil loading
+      playSound([.2,,120,.02,.06,.15,2,.4,,,,,,,,,,.2,.04]);
+    },
+    cargoSell: function () {
+      // Cash register cha-ching
+      playSound([.3,,1200,.01,.05,.1,,1.5,,,,,.05,,,,,,.03]);
+      setTimeout(function () { playSound([.3,,1500,.01,.05,.15,,1.5,,,,,.05,,,,,,.03]); }, 100);
     }
   };
 })();

@@ -82,7 +82,8 @@
     }
 
     if (ms.revealed[r][c]) {
-      // Revealed cell — lighter variant of ocean #4e629d
+      // Revealed cell — clear first, then lighter variant of ocean #4e629d
+      ctx.clearRect(x, y, CELL, CELL);
       ctx.fillStyle = 'rgba(110, 130, 190, 0.35)';
       ctx.fillRect(x, y, CELL, CELL);
       ctx.strokeStyle = 'rgba(90, 110, 170, 0.25)';
@@ -96,7 +97,7 @@
         G.drawMine(x, y);
       } else if (ms.grid[r][c] > 0) {
         ctx.fillStyle = NUM_COLORS[ms.grid[r][c]] || '#000';
-        ctx.font = 'bold 13px "Menlo", "Consolas", "Courier New", monospace';
+        ctx.font = 'bold ' + Math.round(CELL * 0.65) + 'px "Menlo", "Consolas", "Courier New", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(ms.grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
@@ -114,6 +115,16 @@
       ctx.fillRect(x, y + CELL - 1, CELL, 1);
       ctx.globalAlpha = 1.0;
 
+      // Hover highlight — subtle fill + border on unrevealed cells
+      if (G.hoverCell && G.hoverCell.r === r && G.hoverCell.c === c && !ms.flagged[r][c]) {
+        ctx.fillStyle = 'rgba(180, 200, 240, 0.15)';
+        ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
+        ctx.lineWidth = 1;
+      }
+
       if (ms.flagged[r][c]) {
         G.drawFlag(x, y);
       }
@@ -123,13 +134,14 @@
       }
       if (ms.gameOver && ms.flagged[r][c] && !ms.mines[r][c]) {
         G.drawMine(x, y);
+        var s = CELL / 20;
         ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * s;
         ctx.beginPath();
-        ctx.moveTo(x + 4, y + 4);
-        ctx.lineTo(x + CELL - 4, y + CELL - 4);
-        ctx.moveTo(x + CELL - 4, y + 4);
-        ctx.lineTo(x + 4, y + CELL - 4);
+        ctx.moveTo(x + 4 * s, y + 4 * s);
+        ctx.lineTo(x + CELL - 4 * s, y + CELL - 4 * s);
+        ctx.moveTo(x + CELL - 4 * s, y + 4 * s);
+        ctx.lineTo(x + 4 * s, y + CELL - 4 * s);
         ctx.stroke();
         ctx.lineWidth = 1;
       }
@@ -140,56 +152,61 @@
     const CELL = G.CELL;
     const ctx = G.gctx;
     const cx = x + CELL / 2, cy = y + CELL / 2;
+    var s = CELL / 20; // scale factor relative to base CELL=20
     ctx.fillStyle = '#1a1a1a';
     ctx.beginPath();
-    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 5 * s, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.5 * s;
     for (let a = 0; a < 4; a++) {
       const angle = a * Math.PI / 4;
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angle) * 3, cy + Math.sin(angle) * 3);
-      ctx.lineTo(cx + Math.cos(angle) * 7, cy + Math.sin(angle) * 7);
+      ctx.moveTo(cx + Math.cos(angle) * 3 * s, cy + Math.sin(angle) * 3 * s);
+      ctx.lineTo(cx + Math.cos(angle) * 7 * s, cy + Math.sin(angle) * 7 * s);
       ctx.stroke();
     }
     ctx.lineWidth = 1;
     ctx.fillStyle = '#fff';
-    ctx.fillRect(cx - 2, cy - 2, 2, 2);
+    ctx.fillRect(cx - 2 * s, cy - 2 * s, 2 * s, 2 * s);
   };
 
   G.drawFlag = function (x, y) {
     const CELL = G.CELL;
     const ctx = G.gctx;
     const cx = x + CELL / 2;
+    var s = CELL / 20;
     ctx.fillStyle = '#d0d0d0';
-    ctx.fillRect(cx - 1, y + 4, 2, CELL - 8);
+    ctx.fillRect(cx - 1 * s, y + 4 * s, 2 * s, CELL - 8 * s);
     ctx.fillStyle = '#ff3030';
     ctx.beginPath();
-    ctx.moveTo(cx + 1, y + 4);
-    ctx.lineTo(cx + 7, y + 7);
-    ctx.lineTo(cx + 1, y + 10);
+    ctx.moveTo(cx + 1 * s, y + 4 * s);
+    ctx.lineTo(cx + 7 * s, y + 7 * s);
+    ctx.lineTo(cx + 1 * s, y + 10 * s);
     ctx.fill();
     ctx.fillStyle = '#d0d0d0';
-    ctx.fillRect(cx - 4, y + CELL - 5, 8, 2);
-    ctx.fillRect(cx - 3, y + CELL - 7, 6, 2);
+    ctx.fillRect(cx - 4 * s, y + CELL - 5 * s, 8 * s, 2 * s);
+    ctx.fillRect(cx - 3 * s, y + CELL - 7 * s, 6 * s, 2 * s);
   };
 
   // Draw dashed transit route line through path cell centers
   G.drawTransitRoute = function (path, ctx) {
     if (!path || path.length < 2) return;
     var CELL = G.CELL;
+
+    // Draw full path as muted dotted line (always visible for navigation)
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 6]);
     ctx.lineJoin = 'round';
+    ctx.setLineDash([6, 8]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(path[0][1] * CELL + CELL / 2, path[0][0] * CELL + CELL / 2);
     for (var i = 1; i < path.length; i++) {
       ctx.lineTo(path[i][1] * CELL + CELL / 2, path[i][0] * CELL + CELL / 2);
     }
     ctx.stroke();
+
     ctx.setLineDash([]);
     ctx.restore();
   };

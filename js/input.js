@@ -2,8 +2,47 @@
 (function () {
   const G = window.Game;
 
+  // Hover state for minesweeper cells
+  G.hoverCell = { r: -1, c: -1 };
+
   G.initInput = function () {
     const canvas = G.gameCanvas;
+
+    // Mousemove — cursor + hover highlight on unrevealed cells
+    canvas.addEventListener('mousemove', function (e) {
+      if (G.state !== 'MINESWEEPER' || G.ms.gameOver) {
+        canvas.style.cursor = 'default';
+        return;
+      }
+      var rect = canvas.getBoundingClientRect();
+      var c = Math.floor((e.clientX - rect.left) / G.CELL);
+      var r = Math.floor((e.clientY - rect.top) / G.CELL);
+      var prev = G.hoverCell;
+      if (prev.r === r && prev.c === c) return;
+      var oldR = prev.r, oldC = prev.c;
+      G.hoverCell = { r: r, c: c };
+      // Redraw old cell to remove highlight
+      if (oldR >= 0 && oldR < G.rows && oldC >= 0 && oldC < G.cols && G.oceanMask[oldR][oldC] && !G.ms.revealed[oldR][oldC]) {
+        G.drawCell(oldR, oldC);
+      }
+      // Update cursor and draw highlight on new cell
+      if (r >= 0 && r < G.rows && c >= 0 && c < G.cols && G.oceanMask[r][c] && !G.ms.revealed[r][c]) {
+        canvas.style.cursor = 'crosshair';
+        G.drawCell(r, c);
+      } else {
+        canvas.style.cursor = 'default';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', function () {
+      var prev = G.hoverCell;
+      G.hoverCell = { r: -1, c: -1 };
+      if (prev.r >= 0 && prev.r < G.rows && prev.c >= 0 && prev.c < G.cols
+          && G.oceanMask[prev.r][prev.c] && !G.ms.revealed[prev.r][prev.c]) {
+        G.drawCell(prev.r, prev.c);
+      }
+      canvas.style.cursor = 'default';
+    });
 
     // Mouse
     canvas.addEventListener('mousedown', function (e) {
@@ -157,17 +196,20 @@
     document.addEventListener('keydown', function (e) {
       if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {
         G.handleTransitKey(e.key);
-        if (['ArrowUp', 'ArrowDown', ' '].indexOf(e.key) !== -1) {
+        if (['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S', ' '].indexOf(e.key) !== -1) {
           e.preventDefault();
         }
       }
     });
 
-    // Face button
-    document.getElementById('faceBtn').addEventListener('mousedown', function () {
-      if (G.state === 'MINESWEEPER' && !G.ms.gameOver) {
-        document.getElementById('faceBtn').innerHTML = '&#128562;';
-      }
-    });
+    // Face indicator — show surprised face on mousedown during minesweeper
+    var faceEl = document.getElementById('faceBtn');
+    if (faceEl) {
+      faceEl.addEventListener('mousedown', function () {
+        if (G.state === 'MINESWEEPER' && !G.ms.gameOver) {
+          faceEl.innerHTML = '&#128562;';
+        }
+      });
+    }
   };
 })();

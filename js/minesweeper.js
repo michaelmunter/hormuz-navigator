@@ -189,15 +189,44 @@
     return false;
   };
 
+  // Find the swimmer crew member (if alive)
+  function findSwimmer() {
+    if (!G.player || !G.player.crew) return null;
+    for (var i = 0; i < G.player.crew.length; i++) {
+      var m = G.player.crew[i];
+      if (m.role === 'Swimmer' && m.alive) return m;
+    }
+    return null;
+  }
+
   G.onMineHit = function (r, c) {
     const ms = G.ms;
-    ms.gameOver = true;
-    clearInterval(ms.timerInterval);
     ms.revealed[r][c] = 'boom';
-    document.getElementById('faceBtn').innerHTML = '&#128565;';
-    G.setStatus('BOOM! Ship sunk. Try again.', 'lose-msg');
     G.sounds.mineExplode();
 
+    var swimmer = findSwimmer();
+    if (swimmer) {
+      // Swimmer absorbs the hit — dies (permadeath), but game continues
+      swimmer.alive = false;
+      G.player.totalCrewDeaths = (G.player.totalCrewDeaths || 0) + 1;
+      G.drawCell(r, c);
+      document.getElementById('faceBtn').innerHTML = '&#128560;'; // worried face
+      G.setStatus(swimmer.name + ' hit a mine! Swimmer lost — next hit sinks the ship.', 'lose-msg');
+      G.renderTacticalCrewBar();
+      G.savePlayer();
+
+      // Show retreat option
+      G.showRetreatOption();
+      return;
+    }
+
+    // No swimmer — ship destroyed
+    ms.gameOver = true;
+    clearInterval(ms.timerInterval);
+    document.getElementById('faceBtn').innerHTML = '&#128565;';
+    G.setStatus('BOOM! Ship sunk!', 'lose-msg');
+
+    // Reveal all mines
     for (let rr = 0; rr < G.rows; rr++) {
       for (let cc = 0; cc < G.cols; cc++) {
         if (ms.mines[rr][cc] || (ms.flagged[rr][cc] && !ms.mines[rr][cc])) {
@@ -206,8 +235,13 @@
       }
     }
 
-    G.player.inRun = false;
-    G.savePlayer(); // mine hit is permanent — run is over
+    // Process destruction: remove ship, determine crew survival
+    var result = G.processShipDestruction('mine');
+
+    // Show shipwreck overlay after a delay so player sees the mine reveal
+    setTimeout(function () {
+      G.showShipwreckOverlay(result);
+    }, 2500);
   };
 
   G.onMinesweeperWin = function () {
@@ -228,32 +262,35 @@
       G.setStatus('Route plotted! Preparing to set sail...', 'win-msg');
     }
 
-    // Brief delay so player can see the plotted route, then start transit
+    // Brief delay so player can see the plotted route, then crossfade to transit
     setTimeout(function () {
-      G.startTransit('forward');
-    }, 2000);
+      G.crossfadeToNextStage();
+    }, 1500);
   };
 
-  // First-click safety: move mine away from first click, then re-verify path
+  // First-click safety: clear all mines within radius 2 of first click
+  // so the click always opens up a flood-filled area
   G.ensureFirstClickSafe = function (r, c) {
     const ms = G.ms;
-    if (!ms.mines[r][c]) return;
+    var CLEAR_RADIUS = 2;
+    var removed = 0;
 
-    ms.mines[r][c] = false;
-    // Place mine elsewhere (not adjacent to first click)
-    outer:
-    for (let rr = 0; rr < G.rows; rr++) {
-      for (let cc = 0; cc < G.cols; cc++) {
-        if (G.oceanMask[rr][cc] && !ms.mines[rr][cc] && !(rr === r && cc === c)) {
-          if (Math.abs(rr - r) > 1 || Math.abs(cc - c) > 1) {
-            ms.mines[rr][cc] = true;
-            break outer;
-          }
+    for (var dr = -CLEAR_RADIUS; dr <= CLEAR_RADIUS; dr++) {
+      for (var dc = -CLEAR_RADIUS; dc <= CLEAR_RADIUS; dc++) {
+        var nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < G.rows && nc >= 0 && nc < G.cols && ms.mines[nr][nc]) {
+          ms.mines[nr][nc] = false;
+          removed++;
         }
       }
     }
 
-    // Re-verify path — the moved mine may have landed on the carved path
+    if (removed > 0) {
+      ms.mineCount -= removed;
+      document.getElementById('mineCounter').textContent = String(ms.mineCount).padStart(3, '0');
+    }
+
+    // Re-verify path
     if (!G.hasPath(ms.mines)) {
       var path = G.findCarvePath();
       if (path) {
@@ -268,8 +305,8 @@
     }
 
     // Recompute numbers
-    for (let rr = 0; rr < G.rows; rr++) {
-      for (let cc = 0; cc < G.cols; cc++) {
+    for (var rr = 0; rr < G.rows; rr++) {
+      for (var cc = 0; cc < G.cols; cc++) {
         ms.grid[rr][cc] = 0;
       }
     }

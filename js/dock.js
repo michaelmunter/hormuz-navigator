@@ -1,9 +1,6 @@
-// Dock screen — UI rendering for the between-runs management screen
+// Dock screen — simplified: top bar with role slots, ship dropdown, news ticker
 (function () {
   const G = window.Game;
-
-  // Currently selected ship tier (not yet purchased)
-  var _selectedTier = null;
 
   // --- News headlines by escalation phase ---
   var NEWS_POOL = {
@@ -44,7 +41,6 @@
     if (turn < 3) pool = NEWS_POOL.early;
     else if (turn < 7) pool = NEWS_POOL.mid;
     else pool = NEWS_POOL.late;
-    // Deterministic-ish shuffle based on turn so same turn = same news
     var shuffled = pool.slice().sort(function (a, b) {
       var ha = hashStr(a + turn), hb = hashStr(b + turn);
       return ha - hb;
@@ -60,138 +56,363 @@
     return h;
   }
 
-  G.getCaptainLog = function () {
-    var p = G.player;
-    if (p.turn === 0) {
-      return 'First day at the dock. The sea air smells like diesel and opportunity. Time to pick a ship and make some money.';
-    }
-    var entries = [];
-    entries.push('Turn ' + p.turn + ' complete.');
-    entries.push('Bank stands at ' + G.formatMoney(p.bank) + '.');
-    if (p.turn === 1) {
-      entries.push('First run in the books. The strait is no joke.');
-    } else if (p.turn < 4) {
-      entries.push('Getting the hang of these waters.');
-    } else if (p.turn < 8) {
-      entries.push('Tensions are rising out there. Every run feels heavier.');
-    } else {
-      entries.push('How many more runs until we push our luck too far?');
-    }
-    return entries.join(' ');
-  };
-
   // --- Main dock render ---
   G.renderDock = function () {
-    _selectedTier = null;
+    // Bank & week
+    document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+    document.getElementById('menuWeek').textContent = 'Week ' + G.player.turn;
 
-    // News
-    var newsEl = document.getElementById('newsEntries');
-    var headlines = G.getNewsHeadlines(G.player.turn);
-    newsEl.innerHTML = headlines.map(function (h) {
-      return '<div class="news-item">' + h + '</div>';
-    }).join('');
+    // Ensure starting crew exists
+    G.ensureStartingCrew();
 
-    // Captain's log
-    document.getElementById('logEntries').textContent = G.getCaptainLog();
+    // Crew role slots (unified — rendered via game.js renderTacticalCrewBar)
+    G.renderTacticalCrewBar();
 
-    // Bank
-    document.getElementById('dockBankBalance').textContent = G.formatMoney(G.player.bank);
+    // Ship button
+    renderShipButton();
 
-    // Ship panel
-    G.renderDockShipPanel();
+    // News ticker
+    renderNewsTicker();
 
-    // Fuel panel
-    G.renderDockFuelPanel();
-
-    // Crew + equipment placeholders
-    document.getElementById('dockCrew').innerHTML =
-      '<div class="placeholder-text">Crew system coming in a future update.</div>';
-    document.getElementById('dockEquipment').innerHTML =
-      '<div class="placeholder-text">Equipment slots coming in a future update.</div>';
-
-    // Sail button state
-    updateSailButton();
-  };
-
-  G.renderDockShipPanel = function () {
-    var container = document.getElementById('dockShipContent');
-    container.innerHTML = '';
-    var list = document.createElement('div');
-    list.className = 'dock-ship-list';
-    var bank = G.player.bank;
-
-    for (var i = 0; i < G.SHIP_TIERS.length; i++) {
-      var s = G.SHIP_TIERS[i];
-      var canAfford = bank >= s.cost;
-      var btn = document.createElement('button');
-      btn.className = 'dock-ship-btn' + (canAfford ? '' : ' disabled');
-      btn.disabled = !canAfford;
-      var weapons = 'Shotgun';
-      if (s.hasGunner) weapons += ' + Auto Cannon';
-      btn.innerHTML =
-        '<b>' + s.name + '</b>' +
-        '<span class="ship-meta">' + s.shipClass + ' &mdash; ' + G.formatMoney(s.cost) +
-        ' | Cargo: ' + G.formatMoney(s.cargoValue) + ' | ' + weapons + '</span>';
-      if (canAfford) {
-        (function (tier) {
-          btn.onclick = function () { selectShip(tier); };
-        })(s.tier);
+    // Close ship menu when clicking outside
+    document.addEventListener('click', function closeShipOnOutside(e) {
+      if (!e.target.closest('.menu-ship-wrap')) {
+        closeShipMenu();
       }
-      list.appendChild(btn);
-    }
-    container.appendChild(list);
+    });
   };
 
-  function selectShip(tier) {
-    _selectedTier = tier;
-    // Update visual selection
-    var btns = document.querySelectorAll('.dock-ship-btn');
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.remove('selected');
-    }
-    // tier is 1-indexed, buttons are 0-indexed
-    if (btns[tier - 1]) btns[tier - 1].classList.add('selected');
+  // --- Crew popover (dismiss option) ---
+  var _activePopover = null;
 
-    // Update fuel panel to show selected ship's cargo
-    G.renderDockFuelPanel();
-    updateSailButton();
+  G.showCrewPopover = function (member, role, cardEl) {
+    closeCrewPopover();
+
+    var popover = document.createElement('div');
+    popover.className = 'crew-popover';
+
+    var info = document.createElement('div');
+    info.innerHTML =
+      '<div class="crew-popover-name">' + member.name + '</div>' +
+      '<div class="crew-popover-quirk">' + member.quirkLabel +
+      ' <small>(' + member.quirkStat + ' +' +
+      (member.quirkVal < 1 ? Math.round(member.quirkVal * 100) + '%' : member.quirkVal) +
+      ')</small></div>';
+    popover.appendChild(info);
+
+    var dismissBtn = document.createElement('button');
+    dismissBtn.className = 'crew-popover-dismiss';
+    dismissBtn.textContent = 'Dismiss';
+    dismissBtn.onclick = function (e) {
+      e.stopPropagation();
+      var idx = G.getCrewIndexForRole(role);
+      if (idx >= 0) G.dismissCrewMember(idx);
+      closeCrewPopover();
+      G.renderTacticalCrewBar();
+      updateSetSailBtn();
+      document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+    };
+    popover.appendChild(dismissBtn);
+
+    // Append to body, position with fixed coords
+    document.body.appendChild(popover);
+
+    var cardRect = cardEl.getBoundingClientRect();
+    var left = cardRect.left + (cardRect.width / 2) - 80;
+    if (left < 4) left = 4;
+    if (left + 160 > window.innerWidth) left = window.innerWidth - 164;
+    popover.style.left = left + 'px';
+    popover.style.top = (cardRect.bottom + 4) + 'px';
+
+    _activePopover = { el: popover, cardEl: cardEl };
+
+    // Close on outside click
+    setTimeout(function () {
+      document.addEventListener('click', closePopoverOnOutsideClick);
+    }, 0);
+  };
+
+  function closePopoverOnOutsideClick(e) {
+    if (_activePopover && !_activePopover.el.contains(e.target) && !_activePopover.cardEl.contains(e.target)) {
+      closeCrewPopover();
+    }
   }
 
-  function updateSailButton() {
-    var btn = document.getElementById('dockSailBtn');
-    if (_selectedTier) {
-      btn.classList.remove('disabled');
-      btn.disabled = false;
+  function closeCrewPopover() {
+    document.removeEventListener('click', closePopoverOnOutsideClick);
+    if (_activePopover) {
+      _activePopover.el.remove();
+      _activePopover = null;
+    }
+  }
+
+  // --- Ship button & dropdown ---
+  function renderShipButton() {
+    var btn = document.getElementById('menuShipBtn');
+    var playerShip = G.getActivePlayerShip();
+    if (playerShip) {
+      var ship = playerShip.tierData;
+      var owned = playerShip.owned;
+      var damaged = owned.hp < ship.hp;
+
+      // HP blocks
+      var blocks = '';
+      for (var i = 0; i < ship.hp; i++) {
+        blocks += '<div class="ship-hp-block ' + (i < owned.hp ? 'full' : 'empty') + '"></div>';
+      }
+
+      // Oil fill from voyage state
+      var oilPct = (G.voyage && typeof G.voyage.oilPct === 'number') ? Math.round(G.voyage.oilPct) : 0;
+
+      btn.innerHTML =
+        '<div class="ship-panel-name">' + ship.name + '</div>' +
+        '<div class="ship-oil-bar"><div class="ship-oil-fill" style="width:' + oilPct + '%"></div></div>' +
+        '<div class="ship-hp-row">' +
+          '<span class="ship-hp-label">HP</span>' +
+          '<div class="ship-hp-blocks">' + blocks + '</div>' +
+          '<button class="ship-repair-btn' + (damaged ? ' needed' : '') + '" onclick="repairShip()" title="' + (damaged ? 'Repair hull' : 'Hull intact') + '">🔧</button>' +
+        '</div>';
     } else {
-      btn.classList.add('disabled');
-      btn.disabled = true;
+      btn.innerHTML = '<div class="ship-panel-name">No Ship</div>';
     }
   }
 
-  G.renderDockFuelPanel = function () {
-    var el = document.getElementById('dockFuelContent');
-    if (!el) return;
-    if (!_selectedTier) {
-      el.innerHTML = '<div class="placeholder-text">Select a ship to load cargo.</div>';
+  // Expose for external updates
+  G.renderShipButton = renderShipButton;
+
+  G.toggleShipMenu = function () {
+    var menu = document.getElementById('menuShipMenu');
+    if (!menu) return;
+    if (menu.classList.contains('active')) {
+      closeShipMenu();
+    } else {
+      renderShipMenu();
+      menu.classList.add('active');
+    }
+  };
+
+  function closeShipMenu() {
+    var el = document.getElementById('menuShipMenu');
+    if (el) el.classList.remove('active');
+  }
+
+  function renderShipMenu() {
+    var menu = document.getElementById('menuShipMenu');
+    menu.innerHTML = '';
+
+    var playerShip = G.getActivePlayerShip();
+
+    if (playerShip) {
+      var ship = playerShip.tierData;
+      var owned = playerShip.owned;
+
+      // Ship info header
+      var info = document.createElement('div');
+      info.className = 'ship-menu-info';
+      info.innerHTML =
+        '<div class="ship-menu-name">' + ship.name + '</div>' +
+        '<div class="ship-menu-stats">Cargo: ' + G.formatMoney(ship.cargoValue) +
+        ' | Crew: ' + ship.crewSlots.length + ' | HP: ' + owned.hp + '/' + ship.hp + '</div>';
+      menu.appendChild(info);
+
+      // Repair
+      if (owned.hp < ship.hp) {
+        var repairCost = Math.round(ship.cost * 0.1);
+        var canRepair = G.player.bank >= repairCost;
+        var repairBtn = document.createElement('button');
+        repairBtn.className = 'ship-menu-btn' + (canRepair ? '' : ' disabled');
+        repairBtn.textContent = 'Repair (' + G.formatMoney(repairCost) + ')';
+        repairBtn.disabled = !canRepair;
+        if (canRepair) {
+          repairBtn.onclick = function () {
+            G.player.bank -= repairCost;
+            owned.hp = ship.hp;
+            G.savePlayer();
+            closeShipMenu();
+            G.renderDock();
+          };
+        }
+        menu.appendChild(repairBtn);
+      }
+
+      // Separator
+      var sep = document.createElement('div');
+      sep.className = 'ship-menu-sep';
+      sep.textContent = 'Upgrade';
+      menu.appendChild(sep);
+
+      // Upgrade options
+      var hasUpgrades = false;
+      for (var i = 0; i < G.SHIP_TIERS.length; i++) {
+        var s = G.SHIP_TIERS[i];
+        if (s.tier <= ship.tier) continue;
+        hasUpgrades = true;
+        (function (tierData) {
+          var canAfford = G.player.bank >= tierData.cost;
+          var btn = document.createElement('button');
+          btn.className = 'ship-menu-btn' + (canAfford ? '' : ' disabled');
+          btn.disabled = !canAfford;
+          btn.innerHTML = tierData.name + ' <small>' + tierData.shipClass +
+            ' — ' + G.formatMoney(tierData.cost) + '</small>';
+          if (canAfford) {
+            btn.onclick = function () {
+              G.player.bank -= tierData.cost;
+              G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
+              G.player.activeShipIdx = G.player.ownedShips.length - 1;
+              G.savePlayer();
+              closeShipMenu();
+              G.renderDock();
+            };
+          }
+          menu.appendChild(btn);
+        })(s);
+      }
+
+      if (!hasUpgrades) {
+        var maxMsg = document.createElement('div');
+        maxMsg.className = 'ship-menu-note';
+        maxMsg.textContent = 'Maximum tier reached.';
+        menu.appendChild(maxMsg);
+      }
+
+      // Drydock: switch between owned ships
+      if (G.player.ownedShips.length > 1) {
+        var dockSep = document.createElement('div');
+        dockSep.className = 'ship-menu-sep';
+        dockSep.textContent = 'Fleet';
+        menu.appendChild(dockSep);
+
+        for (var j = 0; j < G.player.ownedShips.length; j++) {
+          (function (idx) {
+            var ownedShip = G.player.ownedShips[idx];
+            var td = G.getShipTier(ownedShip.tier);
+            var isActive = idx === G.player.activeShipIdx;
+            var btn = document.createElement('button');
+            btn.className = 'ship-menu-btn' + (isActive ? ' active' : '');
+            btn.textContent = td.name + (isActive ? ' (active)' : '');
+            if (!isActive) {
+              btn.onclick = function () {
+                G.player.activeShipIdx = idx;
+                G.savePlayer();
+                closeShipMenu();
+                G.renderDock();
+              };
+            }
+            menu.appendChild(btn);
+          })(j);
+        }
+      }
+    } else {
+      // No ship — purchase list
+      var noShipMsg = document.createElement('div');
+      noShipMsg.className = 'ship-menu-info';
+      noShipMsg.innerHTML = '<div class="ship-menu-name" style="color:var(--dock-red)">No Ship</div>' +
+        '<div class="ship-menu-stats">Purchase a ship to continue.</div>';
+      menu.appendChild(noShipMsg);
+
+      for (var k = 0; k < G.SHIP_TIERS.length; k++) {
+        (function (tierData) {
+          var canAfford = G.player.bank >= tierData.cost;
+          var btn = document.createElement('button');
+          btn.className = 'ship-menu-btn' + (canAfford ? '' : ' disabled');
+          btn.disabled = !canAfford;
+          btn.innerHTML = tierData.name + ' <small>' + tierData.shipClass +
+            ' — ' + G.formatMoney(tierData.cost) + '</small>';
+          if (canAfford) {
+            btn.onclick = function () {
+              G.player.bank -= tierData.cost;
+              G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
+              G.player.activeShipIdx = G.player.ownedShips.length - 1;
+              G.savePlayer();
+              closeShipMenu();
+              G.renderDock();
+            };
+          }
+          menu.appendChild(btn);
+        })(G.SHIP_TIERS[k]);
+      }
+    }
+  }
+
+  // --- News ticker ---
+  function renderNewsTicker() {
+    var ticker = document.getElementById('newsTicker');
+    var headlines = G.getNewsHeadlines(G.player.turn);
+    ticker.textContent = headlines.join('  \u00b7  ');
+  }
+
+  // --- Set sail button ---
+  function updateSetSailBtn() {
+    // Sail button is now in the map stage card — refresh it
+    if (G.updateMapStageCard) G.updateMapStageCard();
+  }
+
+  // --- Hire modal ---
+  G.showHireModal = function (role) {
+    var modal = document.getElementById('hireModal');
+    var list = document.getElementById('hireCandidateList');
+    list.innerHTML = '';
+
+    document.getElementById('hireModalTitle').textContent = 'Hire ' + role;
+
+    var candidates = G.getHireCandidates(3);
+    if (candidates.length === 0) {
+      list.innerHTML = '<div class="placeholder-text">No crew available for hire.</div>';
+      modal.classList.add('active');
       return;
     }
-    var ship = G.getShipTier(_selectedTier);
-    el.innerHTML =
-      '<div class="fuel-row"><span class="fuel-label">Ship</span><span class="fuel-value">' + ship.name + '</span></div>' +
-      '<div class="fuel-row"><span class="fuel-label">Cargo value</span><span class="fuel-value">' + G.formatMoney(ship.cargoValue) + '</span></div>' +
-      '<div class="fuel-row"><span class="fuel-label">Ship cost</span><span class="fuel-value">' + G.formatMoney(ship.cost) + '</span></div>' +
-      '<div class="fuel-row"><span class="fuel-label">After purchase</span><span class="fuel-value">' + G.formatMoney(G.player.bank - ship.cost) + '</span></div>';
+
+    for (var i = 0; i < candidates.length; i++) {
+      (function (c) {
+        var cost = G.getHireCost(c.id);
+        var canAfford = G.player.bank >= cost;
+
+        var card = document.createElement('div');
+        card.className = 'hire-card' + (canAfford ? '' : ' disabled');
+
+        card.innerHTML =
+          '<div class="hire-portrait" style="background-image:url(' + G.getPortraitSrc(c.id) + ')"></div>' +
+          '<div class="hire-info">' +
+            '<span class="hire-name">' + c.name + '</span>' +
+            '<span class="hire-quirk">' + c.quirkLabel +
+            ' <small>(' + c.quirkStat + ' +' +
+            (c.quirkVal < 1 ? Math.round(c.quirkVal * 100) + '%' : c.quirkVal) +
+            ')</small></span>' +
+            '<span class="hire-cost">' + G.formatMoney(cost) + '</span>' +
+          '</div>';
+
+        if (canAfford) {
+          card.onclick = function () {
+            G.confirmHireForRole(c.id, role);
+            G.closeHireModal();
+            G.renderTacticalCrewBar();
+            updateSetSailBtn();
+            document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+          };
+        }
+
+        list.appendChild(card);
+      })(candidates[i]);
+    }
+
+    modal.classList.add('active');
   };
 
-  // --- Set sail: confirm selected ship and start round ---
+  G.closeHireModal = function () {
+    document.getElementById('hireModal').classList.remove('active');
+  };
+  window.closeHireModal = function () { G.closeHireModal(); };
+
+  // --- Set sail ---
   G.dockSetSail = function () {
-    if (!_selectedTier) return;
-    var ship = G.getShipTier(_selectedTier);
-    if (!ship || G.player.bank < ship.cost) return;
-    document.getElementById('dockScreen').classList.remove('active');
-    G.startRound(_selectedTier);
+    var playerShip = G.getActivePlayerShip();
+    if (!playerShip || playerShip.hp <= 0) return;
+    if (!G.hasCrewRole('Captain')) return;
+    closeCrewPopover();
+    closeShipMenu();
+    G.startVoyage();
   };
 
-  // Expose for HTML onclick
   window.dockSetSail = function () { G.dockSetSail(); };
+  window.toggleShipMenu = function () { G.toggleShipMenu(); };
 })();

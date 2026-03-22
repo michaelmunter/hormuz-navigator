@@ -1,10 +1,14 @@
-const CACHE = 'hormuz-v14';
+const CACHE = 'hormuz-v16';
 const ASSETS = [
   './',
   './index.html',
   './js/zzfx.js',
   './js/sounds.js',
   './js/map.js',
+  './js/ships.js',
+  './js/crew.js',
+  './js/worldmap.js',
+  './js/dock.js',
   './js/renderer.js',
   './js/minesweeper.js',
   './js/transit.js',

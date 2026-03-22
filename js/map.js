@@ -2,7 +2,21 @@
 (function () {
   const G = (window.Game = window.Game || {});
 
-  G.CELL = 20;
+  // Grid dimensions scale with difficulty (turn count).
+  // Starts small (bigger tiles, easier) and grows to max over ~10 turns.
+  // CELL (pixel size per tile) is computed at runtime to fill the viewport.
+  G.MIN_GRID_COLS = 35;
+  G.MAX_GRID_COLS = 45;
+  G.GRID_RATIO = 5 / 3; // cols / rows ≈ 1.667, matches map aspect ratio
+
+  G.getGridSize = function (turn) {
+    var t = Math.min(turn || 0, 10);
+    var cols = Math.round(G.MIN_GRID_COLS + (G.MAX_GRID_COLS - G.MIN_GRID_COLS) * (t / 10));
+    var rows = Math.round(cols / G.GRID_RATIO);
+    return { cols: cols, rows: rows };
+  };
+
+  G.CELL = 20; // default, recomputed in initBoard()
 
   G.oceanImg = new Image();  // hormuz-ocean.png — blue ocean, transparent land
   G.landImg = new Image();   // hormuz-land.png — land terrain, transparent ocean
@@ -45,14 +59,15 @@
       G.oceanMask[r] = [];
       for (var c = 0; c < G.cols; c++) {
         var transparentCount = 0, total = 0;
-        for (var py = r * G.CELL + 2; py < (r + 1) * G.CELL - 2; py++) {
-          for (var px = c * G.CELL + 2; px < (c + 1) * G.CELL - 2; px++) {
+        var inset = Math.max(1, Math.round(G.CELL * 0.1));
+        for (var py = r * G.CELL + inset; py < (r + 1) * G.CELL - inset; py++) {
+          for (var px = c * G.CELL + inset; px < (c + 1) * G.CELL - inset; px++) {
             var idx = (py * canvasW + px) * 4;
             if (d[idx + 3] < 128) transparentCount++;
             total++;
           }
         }
-        G.oceanMask[r][c] = transparentCount / total > 0.7;
+        G.oceanMask[r][c] = transparentCount / total > 0.95;
       }
     }
   };

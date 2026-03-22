@@ -60,7 +60,8 @@ Crew members are persistent characters that survive across runs (if they live). 
 - **Random recruitment**: When hiring, the game offers a selection of randomly generated crew from the sprite pool. Each has a portrait, a name, and a minor stat quirk (e.g. +15% fire rate, +1 HP, slightly better market odds).
 - **Shipwreck survivors**: When a ship sinks, there's a random chance crew members survive. Shown as a short narrative event: *"Olaf survived, tamed a shark and rode it back to port."* Survived crew return to your roster for the next ship.
 - **Crew capacity**: Ships have a max crew size. All roles (including Captain) count toward the cap. Tier 1 fits Captain + Swimmer + Shotgunner (3). Bigger ships fit more specialized roles.
-- **Reputation system**: Hiring costs increase with cumulative crew deaths. `hireCost × (1 + 0.1 × totalCrewDeaths)`. Word gets around the docks when captains get their people killed.
+- **Per-character pricing**: Hire cost = `baseCost × characterWeight × reputationMultiplier`. Each character has a weight (0.5–2.0) based on how good their quirk is. Stronger quirks cost more. You hire the person, then assign them to any role.
+- **Reputation system**: `reputationMultiplier = 1 + 0.1 × totalCrewDeaths`. Word gets around the docks when captains get their people killed. All hire costs scale up.
 - **Crew selection**: On new game, all starting roles are available. Crew persist between runs and are remembered — player only edits the roster when making changes (replacing dead crew, adding new roles for bigger ships).
 
 ### Damage & Loss Rules
@@ -188,6 +189,10 @@ After ship loss with insufficient funds for any tanker + crew: forced retirement
 - Effects: explosion, ocean splash, ship-struck sprites.
 - HP bar in top panel during transit.
 - Speed indicator in status bar.
+
+## Platform
+
+Desktop only (keyboard + mouse). Mobile/touch is out of scope for now — adding it would require separate maps, larger tiles for fat fingers, and a full UI rework. Not worth it until the game proves traction.
 
 ## Controls
 

@@ -6,31 +6,34 @@
   var GRACE_PERIOD = 2;
   // Ramp: threat intensity increases over this many seconds after grace period ends
   var RAMP_DURATION = 12;
-  // Minimum distance (in pixels) between missile spawn and ship — prevents instant-hit missiles
-  var MIN_MISSILE_SPAWN_DIST = 500;
+  // Minimum distance (in cells) between missile spawn and ship — prevents instant-hit missiles
+  var MIN_MISSILE_SPAWN_DIST_CELLS = 25;
 
   // Turn-based difficulty scaling — Iran's mining and tech progress.
   // Threat progression: FPV drones from turn 0, shaheds unlock at turn 3, missiles at turn 5.
   // Each stat scales continuously with player turn count.
   G.getDifficulty = function (turn) {
     var t = Math.max(0, turn);
+    // Destination difficulty multiplier affects threat spawn rates (lower rate = more frequent)
+    var destMod = (G.activeDestination && G.activeDestination.difficulty) || 1;
     return {
-      mineRatio:    Math.min(0.30, 0.18 + t * 0.015),            // 0.18 → 0.30 over ~8 turns
+      mineRatio:    Math.min(0.30, 0.07 + t * 0.02),              // 0.07 → 0.30 over ~12 turns
 
+      // Speeds are in cells/s — converted to px/s at use (multiply by G.CELL)
       // FPV drones — always available from turn 0
       hasFpv:       true,
-      fpvRate:      Math.max(2.0,  6.0 - t * 0.4),               // 6.0s → 2.0s
-      fpvSpeed:     Math.min(60,   30 + t * 3),                   // 30 → 60 px/s (slow, clickable)
+      fpvRate:      Math.max(1.5,  (6.0 - t * 0.4) / destMod),   // 6.0s → 2.0s, scaled by dest
+      fpvSpeed:     Math.min(3.0,  1.5 + t * 0.15),               // 1.5 → 3.0 cells/s (slow, clickable)
 
       // Shaheds — unlock at turn 3 (require gunner / auto cannon)
       hasShaheds:   t >= 3,
-      shahedRate:   Math.max(2.5,  10.0 - t * 0.75),             // 10.0s → 2.5s
-      shahedSpeed:  65,                                            // constant
+      shahedRate:   Math.max(2.0,  (10.0 - t * 0.75) / destMod), // 10.0s → 2.5s, scaled by dest
+      shahedSpeed:  3.25,                                          // cells/s constant
 
       // Missiles — unlock at turn 5 (dodge only, no click defense)
       hasMissiles:  t >= 5,
-      missileRate:  Math.max(2.0,  8.0 - t * 0.5),               // 8.0s → 2.0s
-      missileSpeed: Math.min(150,  70 + t * 8)                    // 70 → 150 px/s
+      missileRate:  Math.max(1.5,  (8.0 - t * 0.5) / destMod),   // 8.0s → 2.0s, scaled by dest
+      missileSpeed: Math.min(7.5,  3.5 + t * 0.4)                 // 3.5 → 7.5 cells/s
     };
   };
 
@@ -75,7 +78,7 @@
       fpvRate: diff.fpvRate,
       fpvSpeed: diff.fpvSpeed,
       // Shaheds (turn-gated, require gunner)
-      hasShaheds: diff.hasShaheds && ship.hasGunner,
+      hasShaheds: diff.hasShaheds && G.hasCrewRole('Gunner'),
       shahedRate: diff.shahedRate,
       shahedSpeed: diff.shahedSpeed,
       // Missiles (turn-gated, dodge only)
@@ -110,6 +113,8 @@
     t.moveAccum = 0;
     t.transitSeconds = 0;
     t.dead = false;
+    t.sailingOff = false;
+    t.sailOffAccum = 0;
     t.elapsed = 0;
     t.lastShotTime = -SHOTGUN_COOLDOWN; // allow immediate first shot
 
@@ -125,8 +130,10 @@
     if (direction === 'forward') {
       t.shahedKills = 0;
       t.fpvKills = 0;
-      t.hp = 1;
-      t.maxHp = 1;
+      // Read HP from the player's owned ship (may be damaged from prior runs)
+      var ps = G.getActivePlayerShip();
+      t.hp = ps ? ps.owned.hp : 1;
+      t.maxHp = ps ? ps.tierData.hp : 1;
     }
 
     t.landEdgeCells = G.getLandEdgeCells();
@@ -138,7 +145,8 @@
         : 'Return trip: Get back safely! Difficulty increased.',
       ''
     );
-    document.getElementById('faceBtn').innerHTML = '&#9875;'; // anchor
+    if (G.renderTacticalCrewBar) G.renderTacticalCrewBar();
+    if (G.updateTransitButtons) G.updateTransitButtons();
 
     // Start transit timer
     clearInterval(t.transitTimerInterval);
@@ -178,14 +186,27 @@
   var SPEED_ACCEL = 3; // how fast shipSpeed approaches target (units/s)
   var ANGLE_LERP = 4;  // how fast shipAngle approaches target (radians/s factor)
 
-  // Shotgun constants
+  // Shotgun constants (distances in cells, converted to px at use)
   var SHOTGUN_SPREAD = Math.PI / 12;   // ~15° half-angle (30° total cone)
-  var SHOTGUN_RANGE = 192;             // max range in pixels (~9.6 cells)
+  var SHOTGUN_RANGE_CELLS = 9.6;       // max range in cells
   var SHOTGUN_COOLDOWN = 1.5;          // seconds between shots
-  var SHOTGUN_CLOSE_RANGE = 60;        // close range for bonus damage (~3 cells)
+  var SHOTGUN_CLOSE_RANGE_CELLS = 3;   // close range for bonus damage
 
   // Interpolated ship pixel position — shared by collision, click handler, and renderer
   function getShipPixelPos(t) {
+    // If sailing off-screen, extrapolate beyond the last path cell
+    if (t.sailingOff) {
+      var lastIdx = t.path.length - 1;
+      var lastCell = t.path[lastIdx];
+      var px = lastCell[1] * G.CELL + G.CELL / 2;
+      var py = lastCell[0] * G.CELL + G.CELL / 2;
+      // Use ship angle to extrapolate direction
+      var offDist = (t.sailOffAccum || 0) * G.CELL;
+      px += Math.cos(t.shipAngle) * offDist;
+      py += Math.sin(t.shipAngle) * offDist;
+      return { x: px, y: py };
+    }
+
     var cell = t.path[t.shipPos];
     var px = cell[1] * G.CELL + G.CELL / 2;
     var py = cell[0] * G.CELL + G.CELL / 2;
@@ -226,9 +247,23 @@
         t.moveAccum -= 1;
         t.shipPos++;
         if (t.shipPos >= t.path.length) {
+          // Ship reached end of path — start sailing off-screen
+          if (!t.sailingOff) {
+            t.sailingOff = true;
+            t.sailOffAccum = 0;
+            // Keep last heading for exit direction
+          }
+        }
+      }
+      // If sailing off, accumulate distance and complete when off-screen
+      if (t.sailingOff) {
+        t.sailOffAccum = (t.sailOffAccum || 0) + cfg.speed * Math.abs(t.shipSpeed) * dt;
+        if (t.sailOffAccum > 3) { // ~3 cells off-screen
           G.onTransitComplete();
           return;
         }
+        // Keep shipPos clamped to last valid index for angle calculation
+        t.shipPos = t.path.length - 1;
       }
       while (t.moveAccum <= -1) {
         t.moveAccum += 1;
@@ -268,8 +303,13 @@
     // Ramp affects spawn rate: at ramp=0 rate is 3x slower, at ramp=1 rate is normal
     var rateMultiplier = 1 / (1 + 2 * (1 - ramp)); // 0.33 → 1.0
 
+    // No new threats when sailing off-screen
+    if (t.sailingOff) {
+      // Still update existing projectiles below, but don't spawn new ones
+    }
+
     // --- Spawn FPV drones (after grace period) ---
-    if (cfg.hasFpv) {
+    if (cfg.hasFpv && !t.sailingOff) {
       t.fpvTimer += dt;
       var effectiveFpvRate = cfg.fpvRate / (returnMult * rateMultiplier);
       if (t.elapsed > GRACE_PERIOD && t.fpvTimer >= effectiveFpvRate) {
@@ -295,7 +335,7 @@
     }
 
     // --- Spawn missiles (after grace period, turn-gated) ---
-    if (cfg.hasMissiles) {
+    if (cfg.hasMissiles && !t.sailingOff) {
       t.missileTimer += dt;
       var effectiveMissileRate = cfg.missileRate / (returnMult * rateMultiplier);
       if (t.elapsed > GRACE_PERIOD && t.missileTimer >= effectiveMissileRate && t.landEdgeCells.length > 0) {
@@ -309,7 +349,8 @@
           var ec = t.landEdgeCells[ci];
           var ex = ec[1] * G.CELL + G.CELL / 2, ey = ec[0] * G.CELL + G.CELL / 2;
           var ed = (ex - shipPxSpawn) * (ex - shipPxSpawn) + (ey - shipPySpawn) * (ey - shipPySpawn);
-          if (ed >= MIN_MISSILE_SPAWN_DIST * MIN_MISSILE_SPAWN_DIST) candidates.push(ec);
+          var minDist = MIN_MISSILE_SPAWN_DIST_CELLS * G.CELL;
+          if (ed >= minDist * minDist) candidates.push(ec);
         }
         if (candidates.length === 0) {
           t.missileTimer = 0;
@@ -318,7 +359,7 @@
           var sr = spawn[0], sc = spawn[1];
           var spawnX = sc * G.CELL + G.CELL / 2;
           var spawnY = sr * G.CELL + G.CELL / 2;
-          var missileSpeed = cfg.missileSpeed * (0.4 + 0.6 * ramp);
+          var missileSpeed = cfg.missileSpeed * G.CELL * (0.4 + 0.6 * ramp);
 
           var curR = t.path[t.shipPos][0], curC = t.path[t.shipPos][1];
           var curX = curC * G.CELL + G.CELL / 2, curY = curR * G.CELL + G.CELL / 2;
@@ -350,7 +391,7 @@
     }
 
     // --- Spawn shaheds (after grace period, turn-gated + requires gunner) ---
-    if (cfg.hasShaheds) {
+    if (cfg.hasShaheds && !t.sailingOff) {
       t.shahedTimer += dt;
       var effectiveShahedRate = cfg.shahedRate / ((t.direction === 'return' ? 1.3 : 1.0) * rateMultiplier);
       if (t.elapsed > GRACE_PERIOD && t.shahedTimer >= effectiveShahedRate) {
@@ -394,7 +435,7 @@
     }
 
     // Update FPV drones (move toward ship — slower than shaheds)
-    var fpvSpeed = cfg.fpvSpeed || 40;
+    var fpvSpeed = (cfg.fpvSpeed || 2) * G.CELL;
     for (var fi = t.fpvs.length - 1; fi >= 0; fi--) {
       var f = t.fpvs[fi];
       if (!f.alive) { t.fpvs.splice(fi, 1); continue; }
@@ -413,7 +454,7 @@
     }
 
     // Update shaheds (move toward ship)
-    var shahedSpeed = cfg.shahedSpeed || 65;
+    var shahedSpeed = (cfg.shahedSpeed || 3.25) * G.CELL;
     for (var j = t.shaheds.length - 1; j >= 0; j--) {
       var s = t.shaheds[j];
       if (!s.alive) { t.shaheds.splice(j, 1); continue; }
@@ -458,16 +499,16 @@
     clearInterval(t.transitTimerInterval);
 
     G.sounds.transitComplete();
-    if (t.direction === 'forward') {
-      G.setStatus('Reached the other side! Preparing return trip...', 'win-msg');
-      // Brief pause then start return trip
-      setTimeout(function () {
-        G.startTransit('return');
-      }, 1500);
-    } else {
-      // Both legs complete — show score
-      G.showScore();
-    }
+    // Advance to next voyage stage (auto-stages or next interactive phase)
+    G.setStatus(
+      t.direction === 'forward'
+        ? 'Reached the other side!'
+        : 'Made it back safely!',
+      'win-msg'
+    );
+    setTimeout(function () {
+      G.advanceStage();
+    }, 1500);
   };
 
   G.onTransitDeath = function () {
@@ -492,9 +533,13 @@
     G.drawTransitBoard(t);
     G.drawShipDeath(t.deathPx, t.deathPy, t.deathAngle);
 
-    G.player.inRun = false;
-    G.player.ship = null; // ship lost
-    G.savePlayer(); // ship destruction is permanent — run is over
+    // Process destruction: remove ship, determine crew survival
+    var result = G.processShipDestruction('transit');
+
+    // Show shipwreck overlay after a brief delay so player sees the death animation
+    setTimeout(function () {
+      G.showShipwreckOverlay(result);
+    }, 2000);
   };
 
   // Normalize angle to [-PI, PI]
@@ -508,7 +553,7 @@
   function inCone(ox, oy, shotAngle, tx, ty) {
     var dx = tx - ox, dy = ty - oy;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > SHOTGUN_RANGE) return false;
+    if (dist > SHOTGUN_RANGE_CELLS * G.CELL) return false;
     var angleToTarget = Math.atan2(dy, dx);
     var diff = Math.abs(normalizeAngle(angleToTarget - shotAngle));
     return diff < SHOTGUN_SPREAD;
@@ -551,7 +596,7 @@
       if (inCone(ship.x, ship.y, shotAngle, s.x, s.y)) {
         var dx = s.x - ship.x, dy = s.y - ship.y;
         var dist = Math.sqrt(dx * dx + dy * dy);
-        var dmg = dist < SHOTGUN_CLOSE_RANGE ? 2 : 1;
+        var dmg = dist < SHOTGUN_CLOSE_RANGE_CELLS * G.CELL ? 2 : 1;
         s.hp -= dmg;
         if (s.hp <= 0) {
           spawnEffect(t, 'shahed_explode', s.x, s.y, 3, 0.5);
@@ -573,11 +618,11 @@
     const t = G.transit;
     if (!t.active) return;
 
-    if (key === 'ArrowUp') {
+    if (key === 'w' || key === 'W' || key === 'ArrowUp') {
       t.shipSpeedTarget = 1;
       G.setStatus('Full speed ahead! \u25b6\u25b6', '');
       G.sounds.speedChange();
-    } else if (key === 'ArrowDown') {
+    } else if (key === 's' || key === 'S' || key === 'ArrowDown') {
       t.shipSpeedTarget = -1;
       G.setStatus('Reversing! \u25c0\u25c0', '');
       G.sounds.speedChange();
@@ -586,5 +631,8 @@
       G.setStatus('All stop! \u23f8', '');
       G.sounds.speedChange();
     }
+    // Update captain action text and transit buttons live
+    if (G.updateCaptainAction) G.updateCaptainAction();
+    if (G.updateTransitButtons) G.updateTransitButtons();
   };
 })();
