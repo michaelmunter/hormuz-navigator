@@ -40,16 +40,38 @@
       /* ── Tactical crew bar ── */
       .tactical-bar {
         display: flex;
-        align-items: center;
+        justify-content: center;
         min-height: 52px;
         padding: 4px 10px;
         background: rgba(245,235,220,0.95);
         border-bottom: none;
         z-index: 10;
         flex-shrink: 0;
+      }
+      .tactical-bar-inner {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        max-width: 100%;
         gap: 6px;
       }
       .menu-ship-wrap { margin-right: 6px; }
+      .ship-divider {
+        width: 8px;
+        height: 38px;
+        margin: 0 7px 0 1px;
+        flex-shrink: 0;
+        opacity: 0.17;
+        background-color: rgba(58,46,28,0.9);
+        mask-image: url('various/ship-chevron.svg');
+        -webkit-mask-image: url('various/ship-chevron.svg');
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+      }
       .tactical-crew-slots {
         display: flex;
         align-items: center;
@@ -60,51 +82,76 @@
       }
       /* Tactical bar uses same warm card styles as dock crew bar */
 
-      .tactical-icon-btn {
-        background: none;
-        border: none;
-        font-size: 18px;
-        cursor: pointer;
-        padding: 4px;
-        line-height: 1;
-        border-radius: 3px;
-        transition: background 0.15s;
+      .utility-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        margin-left: 6px;
       }
-      .tactical-icon-btn:hover { background: rgba(245,235,220,0.1); }
-
-      /* Tactical dropdown menu */
-      .tactical-menu-wrap { position: relative; align-self: center; }
-      .tactical-menu {
-        display: none;
-        position: absolute;
-        top: calc(100% + 4px);
-        right: 0;
-        background: rgba(250,242,230,0.98);
-        border: 1px solid rgba(180,150,110,0.3);
-        border-radius: 6px;
-        box-shadow: 0 4px 12px rgba(60,40,20,0.15);
-        min-width: 140px;
-        z-index: 20;
-        overflow: hidden;
-        padding: 4px 0;
-      }
-      .tactical-menu.active { display: block; }
-      .tactical-menu button {
+      .utility-icons {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: center;
+        gap: 6px;
         width: 100%;
-        text-align: left;
-        padding: 7px 14px;
+      }
+      .utility-icon-btn {
+        width: 22px;
+        height: 22px;
         border: none;
         background: none;
-        font-size: 13px;
-        font-family: inherit;
-        color: #3a2e1c;
+        color: var(--dock-text);
         cursor: pointer;
+        padding: 0;
+        border-radius: 3px;
         transition: background 0.15s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
-      .tactical-menu button:hover { background: rgba(194,121,26,0.1); }
+      .utility-icon-btn:hover { background: rgba(194,121,26,0.08); }
+      .utility-sound-glyph {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        background-color: var(--dock-text);
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: left center;
+        -webkit-mask-position: left center;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+      }
+      .utility-sound-glyph.sound-on {
+        mask-image: url('various/soundon.svg');
+        -webkit-mask-image: url('various/soundon.svg');
+      }
+      .utility-sound-glyph.sound-off {
+        mask-image: url('various/soundoff.svg');
+        -webkit-mask-image: url('various/soundoff.svg');
+      }
+      .utility-help-glyph {
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--dock-text);
+      }
+      .utility-restart-btn {
+        border: none;
+        background: none;
+        color: rgba(58,46,28,0.78);
+        padding: 1px 0;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.45px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: color 0.15s;
+        text-align: center;
+      }
+      .utility-restart-btn:hover { color: var(--dock-text); }
 
       .game-area {
         flex: 1;
@@ -122,10 +169,26 @@
         transition: opacity 0.4s, box-shadow 0.4s;
         border-radius: 4px;
         box-shadow: 0 2px 16px rgba(40,30,15,0.25), 0 0 0 1px rgba(120,90,50,0.12);
+        isolation: isolate;
+      }
+      .board-wrap::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+        opacity: 0;
+        background: rgba(245, 235, 220, 0);
+        backdrop-filter: blur(4px) saturate(0.92);
+        -webkit-backdrop-filter: blur(4px) saturate(0.92);
+        transition: opacity 0.28s ease;
       }
       .board-wrap.map-dimmed {
-        opacity: 0.7;
-        box-shadow: inset 0 0 0 3px rgba(160, 60, 40, 0.3);
+        opacity: 1;
+        box-shadow: 0 2px 16px rgba(40,30,15,0.25), 0 0 0 1px rgba(120,90,50,0.12);
+      }
+      .board-wrap.map-dimmed::after {
+        opacity: 1;
       }
       .board-crossfade {
         position: absolute;
@@ -452,17 +515,64 @@
         margin: 0 0 4px;
       }
       .map-stage-card .stage-subtitle {
-        font-size: 11px;
+        font-size: 12px;
         color: #7a6b55;
         margin-bottom: 10px;
       }
       .map-stage-card .stage-detail {
-        font-size: 12px;
+        font-size: 13px;
         margin: 6px 0;
         line-height: 1.5;
+        min-height: 18px;
       }
       .map-stage-card .stage-detail strong {
         color: #2a8a3e;
+      }
+      .map-stage-card .cargo-summary {
+        margin: 12px 0 14px;
+        padding: 10px 12px;
+        border: 1px solid rgba(180,150,110,0.28);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.45);
+        text-align: left;
+      }
+      .map-stage-card .cargo-summary-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #7a6b55;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .map-stage-card .cargo-summary-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 12px;
+        line-height: 1.45;
+        margin: 2px 0;
+      }
+      .map-stage-card .cargo-summary-label {
+        color: #7a6b55;
+      }
+      .map-stage-card .cargo-summary-value {
+        color: #3a2e1c;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .map-stage-card .cargo-summary-value.positive {
+        color: #2a8a3e;
+      }
+      .map-stage-card .cargo-summary-value.negative {
+        color: #b25540;
+      }
+      .map-stage-card .cargo-summary-value.cost {
+        color: #b25540;
+      }
+      .map-stage-card .cargo-summary-value.muted {
+        color: #9b8b74;
+        font-weight: 500;
       }
       .map-stage-card .stage-actions {
         display: flex;
@@ -477,6 +587,7 @@
         background: #c2791a;
         color: #fff;
         padding: 8px 28px;
+        min-width: 172px;
         font-size: 14px;
         font-weight: 700;
         cursor: pointer;
@@ -502,6 +613,11 @@
         transition: background 0.15s;
       }
       .map-stage-card .stage-repair-btn:hover { background: rgba(210,185,145,0.7); }
+      .map-stage-card .stage-repair-btn.disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
       .map-stage-card .stage-retire-link {
         display: block;
         font-size: 10px;
@@ -517,6 +633,7 @@
         font-size: 13px;
         color: #7a6b55;
         font-style: italic;
+        min-height: 18px;
       }
 
       /* ── Crew action text ── */
@@ -527,6 +644,16 @@
         line-height: 1.2;
         min-height: 12px;
         white-space: nowrap;
+      }
+      .crew-slot-action.reloading {
+        color: rgba(122,107,85,0.72);
+      }
+      .crew-slot-action.deployed {
+        color: rgba(76, 126, 162, 0.92);
+      }
+      .crew-slot-action.dead {
+        color: rgba(122,107,85,0.58);
+        opacity: 0.75;
       }
 
       /* ── Theme variables ── */
@@ -548,42 +675,102 @@
         display: flex;
         flex-direction: column;
         gap: 3px;
-        padding: 2px 0;
+        padding: 1px 0;
         font-family: inherit;
         color: var(--dock-text);
-        min-width: 90px;
+        width: 156px;
       }
-      .ship-panel-name { font-size: 11px; font-weight: 700; white-space: nowrap; line-height: 1; }
+      .ship-panel-head {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        align-items: center;
+        column-gap: 6px;
+      }
+      .ship-panel-icon {
+        width: 17px;
+        height: 17px;
+        opacity: 1;
+        background-color: var(--dock-text);
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        transform: scaleX(-1);
+        flex-shrink: 0;
+        justify-self: center;
+      }
+      .ship-panel-icon.ship-icon {
+        mask-image: url('various/ship.svg');
+        -webkit-mask-image: url('various/ship.svg');
+      }
+      .ship-panel-class {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--dock-text);
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ship-cargo-row {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        align-items: center;
+        column-gap: 6px;
+      }
+      .ship-cargo-icon {
+        width: 11px;
+        height: 11px;
+        background-color: var(--dock-text);
+        mask-image: url('various/oil.svg');
+        -webkit-mask-image: url('various/oil.svg');
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        flex-shrink: 0;
+        justify-self: center;
+      }
       .ship-oil-bar {
-        height: 6px;
-        border-radius: 2px;
-        background: rgba(0,0,0,0.08);
+        width: 92px;
+        height: 10px;
+        border-radius: 3px;
+        background: rgba(58,46,28,0.12);
+        border: 1px solid rgba(58,46,28,0.12);
         overflow: hidden;
         position: relative;
       }
       .ship-oil-fill {
         height: 100%;
-        background: #2a2a2a;
+        background: #2d241a;
         border-radius: 2px;
-        transition: width 0.6s ease;
       }
       .ship-hp-row {
-        display: flex;
+        display: grid;
+        grid-template-columns: 18px 1fr;
         align-items: center;
-        gap: 4px;
+        column-gap: 6px;
       }
       .ship-hp-label {
-        font-size: 8px;
+        font-size: 9px;
         font-weight: 700;
-        color: var(--dock-text-muted);
+        color: var(--dock-text);
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        letter-spacing: 0.45px;
         line-height: 1;
+        justify-self: center;
       }
       .ship-hp-blocks {
         display: flex;
         gap: 2px;
         align-items: center;
+        justify-content: flex-start;
       }
       .ship-hp-block {
         width: 10px;
@@ -593,19 +780,6 @@
       }
       .ship-hp-block.full { background: var(--dock-green); }
       .ship-hp-block.empty { background: rgba(160,64,48,0.3); }
-      .ship-repair-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 12px;
-        padding: 0 2px;
-        opacity: 0.3;
-        transition: opacity 0.15s;
-        line-height: 1;
-      }
-      .ship-repair-btn.needed { opacity: 0.8; cursor: pointer; }
-      .ship-repair-btn.needed:hover { opacity: 1; }
-
       /* Ship upgrade options in stage card */
       .stage-ship-upgrade {
         display: flex;
@@ -639,7 +813,7 @@
       .menu-right-panel {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
+        align-items: center;
         gap: 2px;
         flex-shrink: 0;
         margin-left: auto;
@@ -651,10 +825,13 @@
         font-weight: 700;
         color: var(--dock-green);
         font-family: "Menlo", "Consolas", monospace;
+        align-self: flex-end;
       }
       .menu-week {
         font-size: 12px;
         color: var(--dock-text-muted);
+        align-self: flex-end;
+        margin-top: 2px;
       }
       .menu-actions {
         display: flex;
@@ -681,14 +858,16 @@
         display: flex;
         flex-direction: row;
         align-items: stretch;
-        gap: 5px;
+        gap: 8px;
         width: 120px;
         flex-shrink: 0;
         position: relative;
-        padding: 4px 6px 4px 3px;
+        padding: 4px 5px 4px 3px;
         border-radius: 5px;
         transition: background 0.15s;
+        cursor: pointer;
       }
+      .crew-slot:hover { background: rgba(194,121,26,0.08); }
       .crew-slot-info {
         display: flex;
         flex-direction: column;
@@ -710,6 +889,7 @@
         color: var(--dock-text);
         font-weight: 700;
         line-height: 1.2;
+        white-space: nowrap;
       }
       .crew-slot-name {
         font-size: 11px;
@@ -730,6 +910,7 @@
       .crew-slot-empty {
         width: 36px;
         height: 46px;
+        flex-shrink: 0;
         border: 2px dashed var(--dock-accent);
         border-radius: 4px;
         background: rgba(194,121,26,0.08);
@@ -744,31 +925,76 @@
       }
       .crew-slot-empty:hover { background: rgba(194,121,26,0.18); }
 
-      /* Crew popover (dismiss) */
+      /* Crew hover card */
       .crew-popover {
         position: fixed;
         background: var(--dock-panel-bg);
         border: 1px solid var(--dock-border);
-        border-radius: 5px;
+        border-radius: 8px;
         box-shadow: var(--dock-shadow);
-        padding: 8px;
-        min-width: 160px;
+        padding: 10px 11px;
+        min-width: 220px;
+        max-width: 260px;
         z-index: 200;
-        font-size: 10px;
+        font-size: 11px;
       }
-      .crew-popover-name { font-weight: 700; font-size: 11px; }
-      .crew-popover-quirk { color: var(--dock-text-muted); font-size: 9px; margin-bottom: 4px; }
+      .crew-popover-role {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--dock-accent);
+        margin-bottom: 4px;
+      }
+      .crew-popover-role-desc {
+        color: var(--dock-text);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .crew-popover-role-effect {
+        color: var(--dock-text-muted);
+        font-size: 10px;
+        line-height: 1.4;
+        margin-top: 3px;
+      }
+      .crew-popover-sep {
+        height: 1px;
+        background: rgba(180,150,110,0.22);
+        margin: 8px 0;
+      }
+      .crew-popover-name {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--dock-text);
+      }
+      .crew-popover-crew-desc {
+        color: var(--dock-text-muted);
+        font-size: 10px;
+        line-height: 1.4;
+        margin-top: 2px;
+      }
+      .crew-popover-quirk { color: var(--dock-text-muted); font-size: 10px; margin-top: 5px; line-height: 1.4; }
       .crew-popover-quirk small { color: var(--dock-text-muted); }
+      .crew-popover-empty {
+        color: var(--dock-text-muted);
+        font-size: 10px;
+        line-height: 1.4;
+      }
       .crew-popover-dismiss {
-        font-size: 9px;
-        padding: 3px 10px;
+        font-size: 10px;
+        padding: 0 10px;
+        min-height: 30px;
+        line-height: 1;
+        font-weight: 600;
         color: var(--dock-red);
         border: 1px solid rgba(160,64,48,0.3);
         border-radius: 3px;
         background: rgba(210, 185, 145, 0.5);
         cursor: pointer;
         font-family: inherit;
-        margin-top: 4px;
+        margin-top: 8px;
         width: 100%;
         transition: background 0.15s;
       }
@@ -832,6 +1058,10 @@
         transition: border-color 0.15s;
       }
       .crew-card.clickable:hover .crew-card-portrait { border-color: var(--dock-accent); }
+      .crew-card.crew-deployed .crew-card-portrait {
+        filter: grayscale(0.25) saturate(0.75) sepia(0.28) hue-rotate(160deg) brightness(0.98) contrast(0.9) opacity(0.76);
+        border-color: rgba(76, 126, 162, 0.45);
+      }
 
       .crew-card.crew-dead { opacity: 0.5; }
       .crew-card.crew-dead .crew-card-portrait {
@@ -908,6 +1138,30 @@
       .hire-quirk { font-size: 11px; color: var(--dock-text-muted); font-style: italic; }
       .hire-quirk small { color: var(--dock-text-muted); }
       .hire-cost { font-size: 12px; font-weight: 600; color: var(--dock-green); margin-top: 2px; }
+      .hire-modal-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .hire-modal-actions .dock-btn {
+        flex: 1;
+        min-height: 34px;
+        line-height: 1;
+      }
+      .hire-modal-actions .dock-btn.intern-btn {
+        border-color: var(--dock-accent);
+        background: var(--dock-accent);
+        color: #fff;
+      }
+      .hire-modal-actions .dock-btn.intern-btn:hover {
+        background: var(--dock-accent-hover);
+      }
+      .hire-modal .dock-btn {
+        font-size: 12px;
+        padding: 0 12px;
+      }
+      .hire-modal-actions .dock-btn:not(.intern-btn) {
+        font-weight: 600;
+      }
 
       /* ── Compact for small screens ── */
       @media (max-height: 700px) {
@@ -927,29 +1181,35 @@
     <div class="window">
       <!-- Unified top bar — all states -->
       <div class="crew-bar tactical-bar" id="tacticalBar">
-        <!-- Ship button (always visible) -->
-        <div class="menu-ship-wrap" id="menuShipWrap">
-          <div class="menu-ship-panel" id="menuShipBtn"></div>
-        </div>
-        <!-- Crew slots (always) -->
-        <div class="tactical-crew-slots" id="tacticalCrewSlots"></div>
-        <!-- Right panel: bank + week (always) -->
-        <div class="menu-right-panel" id="menuRightPanel">
-          <span class="menu-bank" id="menuBankBalance">$1,000,000</span>
-          <span class="menu-week" id="menuWeek">Week 0</span>
-        </div>
-        <!-- Gameplay info (gameplay only) -->
-        <!-- Hidden elements for JS compatibility -->
-        <span id="tacticalInfo" style="display:none"></span>
-        <span id="faceBtn" style="display:none"></span>
-        <span id="mineCounter" style="display:none"></span>
-        <span id="timer" style="display:none"></span>
-        <div class="tactical-menu-wrap">
-          <button class="tactical-icon-btn" onclick="toggleTacticalMenu()" title="Menu">☰</button>
-          <div class="tactical-menu" id="tacticalMenu">
-            <button onclick="toggleMute(); closeTacticalMenu()"><span id="muteBtn">🔊</span> Sound</button>
-            <button onclick="newGame(); closeTacticalMenu()">New Game</button>
-            <button onclick="showHelp(); closeTacticalMenu()">Help</button>
+        <div class="tactical-bar-inner" id="tacticalBarInner">
+          <!-- Ship button (always visible) -->
+          <div class="menu-ship-wrap" id="menuShipWrap">
+            <div class="menu-ship-panel" id="menuShipBtn"></div>
+          </div>
+          <div class="ship-divider" aria-hidden="true"></div>
+          <!-- Crew slots (always) -->
+          <div class="tactical-crew-slots" id="tacticalCrewSlots"></div>
+          <!-- Right panel: bank + day (always) -->
+          <div class="menu-right-panel" id="menuRightPanel">
+            <span class="menu-bank" id="menuBankBalance">$1,000,000</span>
+            <span class="menu-week" id="menuWeek">Day 0</span>
+          </div>
+          <!-- Gameplay info (gameplay only) -->
+          <!-- Hidden elements for JS compatibility -->
+          <span id="tacticalInfo" style="display:none"></span>
+          <span id="faceBtn" style="display:none"></span>
+          <span id="mineCounter" style="display:none"></span>
+          <span id="timer" style="display:none"></span>
+          <div class="utility-controls">
+            <div class="utility-icons">
+              <button class="utility-icon-btn" id="soundToggleBtn" onclick="toggleMute()" title="Sound">
+                <span class="utility-sound-glyph sound-on" id="soundGlyph" aria-hidden="true"></span>
+              </button>
+              <button class="utility-icon-btn" onclick="showHelp()" title="Help">
+                <span class="utility-help-glyph" aria-hidden="true">?</span>
+              </button>
+            </div>
+            <button class="utility-restart-btn" onclick="newGame()">Restart</button>
           </div>
         </div>
       </div>
@@ -1022,7 +1282,7 @@
       <div class="modal">
         <h2>Swimmer Lost!</h2>
         <p>Your swimmer hit a mine. Without a swimmer, the next mine sinks the ship.<br><br>
-        You can retreat to the nearest port to hire a replacement (costs 1 week), or press on without one.</p>
+        You can retreat to the nearest port to hire a replacement (costs 1 day), or press on without one.</p>
         <div class="score-actions">
           <button class="action-btn" onclick="onRetreatToPort()">Retreat to port</button>
           <button class="action-btn" onclick="onRetreatContinue()">Press on</button>
@@ -1037,7 +1297,7 @@
         <p>Your ship is lost and you don't have enough funds to buy a new one.</p>
         <table class="score-table">
           <tr><td>Bank</td><td id="gameOverBank">—</td></tr>
-          <tr><td>Weeks survived</td><td id="gameOverWeeks">—</td></tr>
+          <tr><td>Days survived</td><td id="gameOverWeeks">—</td></tr>
         </table>
         <button class="action-btn" onclick="onGameOverRestart()">Start Over</button>
       </div>
@@ -1048,7 +1308,10 @@
       <div class="hire-modal">
         <h3 id="hireModalTitle">Hire Crew</h3>
         <div class="hire-candidates" id="hireCandidateList"></div>
-        <button class="dock-btn" onclick="closeHireModal()" style="width:100%">Cancel</button>
+        <div class="hire-modal-actions">
+          <button class="dock-btn intern-btn" onclick="hireIntern()">Get Intern</button>
+          <button class="dock-btn" onclick="closeHireModal()">Cancel</button>
+        </div>
       </div>
     </div>
 

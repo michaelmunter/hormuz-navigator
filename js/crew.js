@@ -7,6 +7,8 @@
 
   // Base hire cost — every character starts from this, then weight × reputation
   var BASE_HIRE_COST = 200000; // $200K
+  var INTERN_CHARACTER_ID = 10;
+  var PORT_HIRE_POOL_SIZE = 3;
 
   // 28 characters with individual portraits (sprites/crew/00.png – 27.png, 256×256 each)
   // weight: cost multiplier (1.0 = average, higher = more expensive to hire)
@@ -96,11 +98,10 @@
     // Sheet 3 — mixed crew
     {
       id: 10,
-      name: "Clerk",
-      quirkLabel: "Paper Trail",
-      quirkStat: "market",
-      quirkVal: 0.15,
-      weight: 1.0,
+      name: "Intern",
+      quirkLabel: "Cheap, plentiful, disposable",
+      weight: 0,
+      onDeath: "dump in water",
     },
     {
       id: 11,
@@ -245,6 +246,81 @@
   G.CHARACTER_POOL = CHARACTER_POOL;
   // G.CREW_ROLES is now defined in roles.js
   G.BASE_HIRE_COST = BASE_HIRE_COST;
+  G.INTERN_CHARACTER_ID = INTERN_CHARACTER_ID;
+
+  function getFiniteHireIds() {
+    return CHARACTER_POOL
+      .filter(function (c) { return c.id !== INTERN_CHARACTER_ID; })
+      .map(function (c) { return c.id; });
+  }
+
+  function sanitizeHirePool(player, ids, removeRostered) {
+    if (!Array.isArray(ids)) ids = [];
+    var rosterIds = {};
+    var clean = [];
+    for (var i = 0; removeRostered && player && player.crew && i < player.crew.length; i++) {
+      rosterIds[player.crew[i].charId] = true;
+    }
+    for (var j = 0; j < ids.length; j++) {
+      var id = ids[j];
+      if (id === INTERN_CHARACTER_ID) continue;
+      if (clean.indexOf(id) >= 0) continue;
+      if (removeRostered && rosterIds[id]) continue;
+      if (!CHARACTER_POOL.some(function (c) { return c.id === id; })) continue;
+      clean.push(id);
+    }
+    return clean;
+  }
+
+  function drawHirePoolFromAvailable(player, count) {
+    var available = sanitizeHirePool(player, player && player.availableHirePool, true).slice();
+    for (var i = available.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = available[i];
+      available[i] = available[j];
+      available[j] = tmp;
+    }
+    return available.slice(0, count || PORT_HIRE_POOL_SIZE);
+  }
+
+  G.ensureHireState = function (player) {
+    player = player || G.player;
+    if (!player) return;
+    if (typeof player.portVisitId !== 'number') player.portVisitId = 1;
+    if (typeof player.hirePoolVisitId !== 'number') player.hirePoolVisitId = 1;
+    if (!Array.isArray(player.availableHirePool)) {
+      player.availableHirePool = getFiniteHireIds();
+    }
+    player.availableHirePool = sanitizeHirePool(player, player.availableHirePool, true);
+    var missingCurrentPool = !Array.isArray(player.currentHirePool);
+    if (missingCurrentPool) player.currentHirePool = [];
+    player.currentHirePool = sanitizeHirePool(player, player.currentHirePool, true).filter(function (id) {
+      return player.availableHirePool.indexOf(id) >= 0;
+    });
+    if (player.hirePoolVisitId !== player.portVisitId || missingCurrentPool) {
+      player.currentHirePool = drawHirePoolFromAvailable(player, PORT_HIRE_POOL_SIZE);
+      player.hirePoolVisitId = player.portVisitId;
+    }
+  };
+
+  G.refreshHirePoolForPort = function () {
+    if (!G.player) return;
+    G.ensureHireState();
+    G.player.portVisitId += 1;
+    G.player.currentHirePool = drawHirePoolFromAvailable(G.player, PORT_HIRE_POOL_SIZE);
+    G.player.hirePoolVisitId = G.player.portVisitId;
+  };
+
+  G.consumeHireCandidate = function (charId) {
+    if (!G.player || charId === INTERN_CHARACTER_ID) return;
+    G.ensureHireState();
+    G.player.availableHirePool = G.player.availableHirePool.filter(function (id) {
+      return id !== charId;
+    });
+    G.player.currentHirePool = G.player.currentHirePool.filter(function (id) {
+      return id !== charId;
+    });
+  };
 
   // Get portrait image path for a character ID
   G.getPortraitSrc = function (charId) {
@@ -258,6 +334,7 @@
       return c.id === charId;
     });
     if (!template) return BASE_HIRE_COST;
+    if (template.weight === 0) return 0;
     var reputationMultiplier = 1 + 0.1 * (G.player.totalCrewDeaths || 0);
     return Math.round(BASE_HIRE_COST * template.weight * reputationMultiplier);
   };
@@ -275,6 +352,7 @@
       quirkLabel: template.quirkLabel,
       quirkStat: template.quirkStat,
       quirkVal: template.quirkVal,
+      onDeath: template.onDeath,
       hireCost: G.getHireCost(charId),
       alive: true,
     };
@@ -282,21 +360,11 @@
 
   // Get N random candidates not already in the roster
   G.getHireCandidates = function (count) {
-    var usedIds = {};
-    for (var i = 0; i < G.player.crew.length; i++) {
-      usedIds[G.player.crew[i].charId] = true;
-    }
-    var available = CHARACTER_POOL.filter(function (c) {
-      return !usedIds[c.id];
-    });
-    // Shuffle
-    for (var j = available.length - 1; j > 0; j--) {
-      var k = Math.floor(Math.random() * (j + 1));
-      var tmp = available[j];
-      available[j] = available[k];
-      available[k] = tmp;
-    }
-    return available.slice(0, count || 3);
+    G.ensureHireState();
+    var ids = (G.player && G.player.currentHirePool) || [];
+    return ids.slice(0, count || PORT_HIRE_POOL_SIZE).map(function (id) {
+      return CHARACTER_POOL.find(function (c) { return c.id === id; });
+    }).filter(Boolean);
   };
 
   // Dismiss a crew member by index
@@ -321,6 +389,7 @@
     if (!member) return false;
     G.player.bank -= cost;
     G.player.crew.push(member);
+    G.consumeHireCandidate(charId);
     G.savePlayer();
     return true;
   };
@@ -333,6 +402,7 @@
     if (!member) return false;
     G.player.bank -= cost;
     G.player.crew.push(member);
+    G.consumeHireCandidate(charId);
     G.savePlayer();
     return true;
   };
@@ -341,7 +411,8 @@
   G.hasCrewRole = function (role) {
     if (!G.player || !G.player.crew) return false;
     for (var i = 0; i < G.player.crew.length; i++) {
-      if (G.player.crew[i].role === role && G.player.crew[i].alive !== false) return true;
+      if (G.player.crew[i].role === role && G.player.crew[i].alive !== false)
+        return true;
     }
     return false;
   };

@@ -26,7 +26,7 @@
         G.drawCell(oldR, oldC);
       }
       // Update cursor and draw highlight on new cell
-      if (r >= 0 && r < G.rows && c >= 0 && c < G.cols && G.oceanMask[r][c] && !G.ms.revealed[r][c]) {
+      if (r >= 0 && r < G.rows && c >= 0 && c < G.cols && G.canProbeCell && G.canProbeCell(r, c)) {
         canvas.style.cursor = 'crosshair';
         G.drawCell(r, c);
       } else {
@@ -64,10 +64,12 @@
       if (G.state !== 'MINESWEEPER') return;
       const ms = G.ms;
       if (ms.gameOver) return;
+      if (ms.introActive) return;
       if (r < 0 || r >= G.rows || c < 0 || c >= G.cols || !G.oceanMask[r][c]) return;
 
       if (e.button !== 0) return;
       if (ms.flagged[r][c]) return;
+      if (G.canProbeCell && !G.canProbeCell(r, c) && !ms.revealed[r][c]) return;
 
       // First click safety
       if (!ms.started) {
@@ -96,13 +98,14 @@
                     G.onMineHit(nr, nc);
                     return;
                   }
-                  G.revealCell(nr, nc);
+                  if (!G.canProbeCell || G.canProbeCell(nr, nc)) G.revealCell(nr, nc);
                 }
               }
             }
           }
         }
         if (!ms.gameOver && G.checkWin()) G.onMinesweeperWin();
+        if (!ms.gameOver && G.savePlayer) G.savePlayer();
         return;
       }
 
@@ -114,6 +117,7 @@
       G.revealCell(r, c);
       G.sounds.reveal();
       if (G.checkWin()) G.onMinesweeperWin();
+      if (!ms.gameOver && G.savePlayer) G.savePlayer();
     });
 
     // Right-click flag toggle via contextmenu (more reliable than mousedown button===2)
@@ -122,6 +126,7 @@
       if (G.state !== 'MINESWEEPER') return;
       var ms = G.ms;
       if (ms.gameOver) return;
+      if (ms.introActive) return;
       var rect = canvas.getBoundingClientRect();
       var c = Math.floor((e.clientX - rect.left) / G.CELL);
       var r = Math.floor((e.clientY - rect.top) / G.CELL);
@@ -132,6 +137,7 @@
       document.getElementById('mineCounter').textContent =
         String(Math.max(0, ms.mineCount - ms.flagCount)).padStart(3, '0');
       G.drawCell(r, c);
+      if (G.savePlayer) G.savePlayer();
       if (ms.flagged[r][c]) G.sounds.flag(); else G.sounds.unflag();
     });
     document.getElementById('boardWrap').addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -159,6 +165,7 @@
         if (touchMoved) return;
         var ms = G.ms;
         if (G.state !== 'MINESWEEPER' || ms.gameOver) return;
+        if (ms.introActive) return;
         if (r >= 0 && r < G.rows && c >= 0 && c < G.cols &&
             G.oceanMask[r][c] && !ms.revealed[r][c]) {
           ms.flagged[r][c] = !ms.flagged[r][c];
@@ -166,6 +173,7 @@
           document.getElementById('mineCounter').textContent =
             String(Math.max(0, ms.mineCount - ms.flagCount)).padStart(3, '0');
           G.drawCell(r, c);
+          if (G.savePlayer) G.savePlayer();
         }
       }, 400);
     }, { passive: false });

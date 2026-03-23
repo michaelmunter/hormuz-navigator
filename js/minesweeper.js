@@ -1,6 +1,17 @@
 // Minesweeper phase logic — mine placement, reveal, flood fill, win check
 (function () {
   const G = window.Game;
+  const ENTRY_MAX_REVEAL_CELLS = 24;
+  const ENTRY_MAX_CONTAINMENT_MINES = 4;
+  const ENTRY_CONTAINMENT_CANDIDATE_LIMIT = 12;
+  const ENTRY_FOOTHOLD_DEPTH = 2;
+  const ENTRY_MAX_INFO_REVEALS = 2;
+
+  function getMinefieldObjectiveText() {
+    return G.getMinefieldDirection && G.getMinefieldDirection() === 'return'
+      ? 'Expand from secured water. Clear a path from right to left!'
+      : 'Expand from secured water. Clear a path from left to right!';
+  }
 
   // Minesweeper state
   G.ms = {
@@ -14,7 +25,10 @@
     flagCount: 0,
     started: false,
     seconds: 0,
-    timerInterval: null
+    timerInterval: null,
+    pendingClearedMine: null,
+    fadingMine: null,
+    entryFootholdCenter: null
   };
 
   G.initMinesweeper = function (mineRatio) {
@@ -26,11 +40,15 @@
     ms.started = false;
     ms.seconds = 0;
     ms.flagCount = 0;
+    ms.introActive = false;
+    ms.pendingClearedMine = null;
+    ms.fadingMine = null;
+    ms.entryFootholdCenter = null;
     clearInterval(ms.timerInterval);
 
     document.getElementById('timer').textContent = '000';
     document.getElementById('faceBtn').innerHTML = '&#128578;';
-    G.setStatus('Navigate the Strait of Hormuz. Clear a path from left to right!', '');
+    G.setStatus(getMinefieldObjectiveText(), '');
 
     // Count ocean cells
     const oceanCells = [];
@@ -61,13 +79,116 @@
       }
     }
 
+    ms.entryFootholdCenter = G.pickEntryFootholdCenter();
+
     // Place mines with guaranteed path
     G.placeMines(oceanCells, ms);
+
+    // Carve and reveal a small entry foothold on the ship side.
+    G.seedEntryFoothold(ms);
 
     // Compute numbers
     G.computeNumbers(ms);
 
+    // Keep the starting opening readable by containing it with actual mines.
+    G.containEntryFootholdReveal(ms);
+
+    // Show the secured entry water before the player starts probing outward.
+    G.revealEntryFoothold(ms);
+
     G.drawBoard();
+    G.playMinesweeperIntro();
+    G.savePlayer();
+  };
+
+  G.getMinesweeperSnapshot = function () {
+    var ms = G.ms;
+    return {
+      grid: ms.grid,
+      mines: ms.mines,
+      revealed: ms.revealed,
+      flagged: ms.flagged,
+      gameOver: ms.gameOver,
+      gameWon: ms.gameWon,
+      mineCount: ms.mineCount,
+      flagCount: ms.flagCount,
+      started: ms.started,
+      seconds: ms.seconds,
+      pendingClearedMine: ms.pendingClearedMine,
+      fadingMine: null,
+      entryFootholdCenter: ms.entryFootholdCenter
+    };
+  };
+
+  G.restoreMinesweeper = function (snapshot) {
+    if (!snapshot) return;
+    var ms = G.ms;
+    clearInterval(ms.timerInterval);
+    ms.grid = snapshot.grid;
+    ms.mines = snapshot.mines;
+    ms.revealed = snapshot.revealed;
+    ms.flagged = snapshot.flagged;
+    ms.gameOver = !!snapshot.gameOver;
+    ms.gameWon = !!snapshot.gameWon;
+    ms.mineCount = snapshot.mineCount || 0;
+    ms.flagCount = snapshot.flagCount || 0;
+    ms.started = !!snapshot.started;
+    ms.seconds = snapshot.seconds || 0;
+    ms.introActive = false;
+    ms.pendingClearedMine = snapshot.pendingClearedMine || null;
+    ms.fadingMine = null;
+    ms.entryFootholdCenter = snapshot.entryFootholdCenter || null;
+    document.getElementById('mineCounter').textContent =
+      String(Math.max(0, ms.mineCount - ms.flagCount)).padStart(3, '0');
+    document.getElementById('timer').textContent = String(Math.min(ms.seconds, 999)).padStart(3, '0');
+    document.getElementById('faceBtn').innerHTML = ms.gameOver
+      ? (ms.gameWon ? '&#128526;' : '&#128560;')
+      : '&#128578;';
+    G.setStatus(getMinefieldObjectiveText(), '');
+    G.drawBoard();
+    if (ms.started && !ms.gameOver) G.startMinesweeperTimer();
+  };
+
+  G.playMinesweeperIntro = function () {
+    var ms = G.ms;
+    var center = G.findEntryFootholdCenter();
+    if (!center || !G.sctx || !G.activeShip) return;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
+
+    ms.introActive = true;
+    var startX = edges.entryCol === G.cols - 1 ? (G.cols + 0.8) * G.CELL : -G.CELL * 1.8;
+    var targetX = center[1] * G.CELL + G.CELL / 2;
+    var targetY = center[0] * G.CELL + G.CELL / 2;
+    var startTime = performance.now();
+    var duration = 650;
+
+    function tick(now) {
+      var t = Math.min(1, (now - startTime) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      var x = startX + (targetX - startX) * eased;
+
+      G.sctx.clearRect(0, 0, G.spriteCanvas.width, G.spriteCanvas.height);
+      G.drawShip(x, targetY, 0);
+
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        ms.introActive = false;
+        G.drawMinesweeperEntryShip();
+      }
+    }
+
+    requestAnimationFrame(tick);
+  };
+
+  G.drawMinesweeperEntryShip = function () {
+    var center = G.findEntryFootholdCenter();
+    if (!center || !G.sctx || !G.activeShip) return;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
+    var x = center[1] * G.CELL + G.CELL / 2;
+    var y = center[0] * G.CELL + G.CELL / 2;
+    var angle = edges.entryCol === G.cols - 1 ? Math.PI : 0;
+    G.drawShip(x, y, angle);
   };
 
   G.placeMines = function (oceanCells, ms) {
@@ -140,6 +261,341 @@
     }
   };
 
+  G.getMinefieldDirection = function () {
+    var stage = (G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0)
+      ? G.voyage.stages[G.voyage.stageIdx]
+      : null;
+    return stage && stage.id === 'mines_ret' ? 'return' : 'forward';
+  };
+
+  G.getMinefieldEdges = function (direction) {
+    var travelDirection = direction || G.getMinefieldDirection();
+    if (travelDirection === 'return') {
+      return { entryCol: G.cols - 1, exitCol: 0, inwardStep: -1 };
+    }
+    return { entryCol: 0, exitCol: G.cols - 1, inwardStep: 1 };
+  };
+
+  G.findEntryFootholdCenter = function (direction) {
+    if (G.ms && G.ms.entryFootholdCenter) return G.ms.entryFootholdCenter;
+    var entryCol = G.getMinefieldEdges ? G.getMinefieldEdges(direction).entryCol : 0;
+    var targetRow = Math.floor(G.rows / 2);
+    for (var offset = 0; offset < G.rows; offset++) {
+      var up = targetRow - offset;
+      if (up >= 0 && G.oceanMask[up][entryCol]) return [up, entryCol];
+      var down = targetRow + offset;
+      if (offset > 0 && down < G.rows && G.oceanMask[down][entryCol]) return [down, entryCol];
+    }
+    return null;
+  };
+
+  G.pickEntryFootholdCenter = function (direction) {
+    var entryCol = G.getMinefieldEdges ? G.getMinefieldEdges(direction).entryCol : 0;
+    var candidates = [];
+    for (var r = 0; r < G.rows; r++) {
+      if (G.oceanMask[r][entryCol]) candidates.push([r, entryCol]);
+    }
+    if (!candidates.length) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  };
+
+  G.seedEntryFoothold = function (ms) {
+    var center = G.findEntryFootholdCenter();
+    if (!center) return;
+    var inwardStep = G.getMinefieldEdges ? G.getMinefieldEdges().inwardStep : 1;
+
+    var removed = 0;
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = 0; dc <= ENTRY_FOOTHOLD_DEPTH; dc++) {
+        var nr = center[0] + dr;
+        var nc = center[1] + (dc * inwardStep);
+        if (nr < 0 || nr >= G.rows || nc < 0 || nc >= G.cols) continue;
+        if (!G.oceanMask[nr][nc]) continue;
+        if (ms.mines[nr][nc]) {
+          ms.mines[nr][nc] = false;
+          removed++;
+        }
+      }
+    }
+
+    if (removed > 0) {
+      ms.mineCount -= removed;
+      document.getElementById('mineCounter').textContent = String(ms.mineCount).padStart(3, '0');
+    }
+
+    if (!G.hasPath(ms.mines)) {
+      var path = G.findCarvePath();
+      if (path) {
+        for (var i = 0; i < path.length; i++) {
+          if (ms.mines[path[i][0]][path[i][1]]) {
+            ms.mines[path[i][0]][path[i][1]] = false;
+            ms.mineCount--;
+          }
+        }
+        document.getElementById('mineCounter').textContent = String(ms.mineCount).padStart(3, '0');
+      }
+    }
+  };
+
+  function isEntryFootholdCell(center, r, c) {
+    if (!center) return false;
+    var inwardStep = G.getMinefieldEdges ? G.getMinefieldEdges().inwardStep : 1;
+    if (r < center[0] - 1 || r > center[0] + 1) return false;
+    if (inwardStep > 0) return c >= center[1] && c <= center[1] + ENTRY_FOOTHOLD_DEPTH;
+    return c <= center[1] && c >= center[1] - ENTRY_FOOTHOLD_DEPTH;
+  }
+
+  function collectSimulatedReveal(ms, startR, startC) {
+    var revealed = [];
+    var seen = Array.from({ length: G.rows }, function () {
+      return Array(G.cols).fill(false);
+    });
+    var stack = [[startR, startC]];
+
+    while (stack.length) {
+      var cell = stack.pop();
+      var r = cell[0];
+      var c = cell[1];
+      if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) continue;
+      if (seen[r][c] || !G.oceanMask[r][c] || ms.mines[r][c]) continue;
+
+      seen[r][c] = true;
+      revealed.push([r, c]);
+
+      if (ms.grid[r][c] !== 0) continue;
+
+      for (var dr = -1; dr <= 1; dr++) {
+        for (var dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          stack.push([r + dr, c + dc]);
+        }
+      }
+    }
+
+    return revealed;
+  }
+
+  function getContainmentCandidates(ms, revealedCells, center) {
+    var zeroCandidates = [];
+    var fallbackCandidates = [];
+    var seen = Array.from({ length: G.rows }, function () {
+      return Array(G.cols).fill(false);
+    });
+
+    for (var i = 0; i < revealedCells.length; i++) {
+      var r = revealedCells[i][0];
+      var c = revealedCells[i][1];
+      if (!G.oceanMask[r][c] || ms.mines[r][c] || isEntryFootholdCell(center, r, c)) continue;
+      if (seen[r][c]) continue;
+      seen[r][c] = true;
+      if (ms.grid[r][c] === 0) zeroCandidates.push([r, c]);
+      else fallbackCandidates.push([r, c]);
+    }
+
+    function sortByDistance(a, b) {
+      var aDist = Math.abs(a[0] - center[0]) + Math.abs(a[1] - center[1]);
+      var bDist = Math.abs(b[0] - center[0]) + Math.abs(b[1] - center[1]);
+      return aDist - bDist;
+    }
+
+    zeroCandidates.sort(sortByDistance);
+    fallbackCandidates.sort(sortByDistance);
+
+    return zeroCandidates.length ? zeroCandidates : fallbackCandidates;
+  }
+
+  function evaluateContainmentPlacement(ms, center, placement) {
+    for (var i = 0; i < placement.length; i++) {
+      ms.mines[placement[i][0]][placement[i][1]] = true;
+    }
+
+    if (!G.hasPath(ms.mines)) {
+      for (var j = 0; j < placement.length; j++) {
+        ms.mines[placement[j][0]][placement[j][1]] = false;
+      }
+      return null;
+    }
+
+    G.computeNumbers(ms);
+    var revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
+
+    for (var k = 0; k < placement.length; k++) {
+      ms.mines[placement[k][0]][placement[k][1]] = false;
+    }
+
+    return revealedCells;
+  }
+
+  function findBestContainmentPlacement(ms, revealedCells, center) {
+    var baseline = revealedCells.length;
+    var candidates = getContainmentCandidates(ms, revealedCells, center).slice(0, ENTRY_CONTAINMENT_CANDIDATE_LIMIT);
+    var best = null;
+    var bestReduction = 0;
+
+    for (var i = 0; i < candidates.length; i++) {
+      var singlePlacement = [candidates[i]];
+      var singleReveal = evaluateContainmentPlacement(ms, center, singlePlacement);
+      if (singleReveal) {
+        var singleReduction = baseline - singleReveal.length;
+        if (singleReduction > bestReduction) {
+          bestReduction = singleReduction;
+          best = singlePlacement.slice();
+        }
+      }
+
+      for (var j = i + 1; j < candidates.length; j++) {
+        var pairPlacement = [candidates[i], candidates[j]];
+        var pairReveal = evaluateContainmentPlacement(ms, center, pairPlacement);
+        if (!pairReveal) continue;
+        var pairReduction = baseline - pairReveal.length;
+        if (pairReduction > bestReduction) {
+          bestReduction = pairReduction;
+          best = pairPlacement.slice();
+        }
+      }
+    }
+
+    G.computeNumbers(ms);
+    return best;
+  }
+
+  function updateMineCounter(ms) {
+    document.getElementById('mineCounter').textContent =
+      String(Math.max(0, ms.mineCount - ms.flagCount)).padStart(3, '0');
+  }
+
+  G.containEntryFootholdReveal = function (ms) {
+    var center = G.findEntryFootholdCenter();
+    if (!center) return;
+
+    var revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
+    if (revealedCells.length <= ENTRY_MAX_REVEAL_CELLS) return;
+
+    var added = 0;
+    var guard = 0;
+
+    while (revealedCells.length > ENTRY_MAX_REVEAL_CELLS && guard < 6 && added < ENTRY_MAX_CONTAINMENT_MINES) {
+      var bestPlacement = findBestContainmentPlacement(ms, revealedCells, center);
+      if (!bestPlacement || !bestPlacement.length) break;
+      var remainingBudget = ENTRY_MAX_CONTAINMENT_MINES - added;
+      if (bestPlacement.length > remainingBudget) {
+        bestPlacement = bestPlacement.slice(0, remainingBudget);
+      }
+      for (var i = 0; i < bestPlacement.length; i++) {
+        ms.mines[bestPlacement[i][0]][bestPlacement[i][1]] = true;
+      }
+      ms.mineCount += bestPlacement.length;
+      added += bestPlacement.length;
+      G.computeNumbers(ms);
+      revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
+      guard++;
+    }
+
+    if (added > 0) updateMineCounter(ms);
+  };
+
+  function getHiddenNeighbors(ms, r, c) {
+    var hidden = [];
+    var flagged = 0;
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        var nr = r + dr;
+        var nc = c + dc;
+        if (nr < 0 || nr >= G.rows || nc < 0 || nc >= G.cols) continue;
+        if (!G.oceanMask[nr][nc]) continue;
+        if (ms.flagged[nr][nc]) {
+          flagged++;
+        } else if (!ms.revealed[nr][nc]) {
+          hidden.push([nr, nc]);
+        }
+      }
+    }
+    return { hidden: hidden, flagged: flagged };
+  }
+
+  function hasImmediateSafeFrontierProbe(ms) {
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (ms.revealed[r][c] !== true || ms.mines[r][c] || ms.grid[r][c] <= 0) continue;
+        var neighbors = getHiddenNeighbors(ms, r, c);
+        if (!neighbors.hidden.length) continue;
+        if (ms.grid[r][c] === neighbors.flagged) {
+          for (var i = 0; i < neighbors.hidden.length; i++) {
+            if (G.canProbeCell(neighbors.hidden[i][0], neighbors.hidden[i][1])) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  function getStarterInfoCandidates(ms, center) {
+    var candidates = [];
+    var seen = Array.from({ length: G.rows }, function () {
+      return Array(G.cols).fill(false);
+    });
+
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (!G.canProbeCell(r, c) || ms.mines[r][c] || seen[r][c]) continue;
+        seen[r][c] = true;
+        candidates.push([r, c]);
+      }
+    }
+
+    candidates.sort(function (a, b) {
+      var aZeroPenalty = ms.grid[a[0]][a[1]] === 0 ? 1 : 0;
+      var bZeroPenalty = ms.grid[b[0]][b[1]] === 0 ? 1 : 0;
+      if (aZeroPenalty !== bZeroPenalty) return aZeroPenalty - bZeroPenalty;
+
+      var aDist = Math.abs(a[0] - center[0]) + Math.abs(a[1] - center[1]);
+      var bDist = Math.abs(b[0] - center[0]) + Math.abs(b[1] - center[1]);
+      if (aDist !== bDist) return aDist - bDist;
+
+      return ms.grid[a[0]][a[1]] - ms.grid[b[0]][b[1]];
+    });
+
+    return candidates;
+  }
+
+  G.ensureStarterIntel = function (ms) {
+    var center = G.findEntryFootholdCenter();
+    if (!center || hasImmediateSafeFrontierProbe(ms)) return;
+
+    var reveals = 0;
+    while (!hasImmediateSafeFrontierProbe(ms) && reveals < ENTRY_MAX_INFO_REVEALS) {
+      var candidates = getStarterInfoCandidates(ms, center);
+      if (!candidates.length) break;
+      G.revealCell(candidates[0][0], candidates[0][1]);
+      reveals++;
+    }
+  };
+
+  G.revealEntryFoothold = function (ms) {
+    var center = G.findEntryFootholdCenter();
+    if (!center) return;
+    G.revealCell(center[0], center[1]);
+    G.ensureStarterIntel(ms);
+  };
+
+  G.canProbeCell = function (r, c) {
+    var ms = G.ms;
+    if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) return false;
+    if (!G.oceanMask[r][c] || ms.revealed[r][c] || ms.flagged[r][c]) return false;
+
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        var nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < G.rows && nc >= 0 && nc < G.cols && ms.revealed[nr][nc] === true) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   G.revealCell = function (r, c) {
     const ms = G.ms;
     if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) return;
@@ -161,19 +617,38 @@
   G.checkWin = function () {
     const ms = G.ms;
     const rows = G.rows, cols = G.cols;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0, exitCol: cols - 1 };
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const queue = [];
+    var center = G.findEntryFootholdCenter();
 
-    for (let r = 0; r < rows; r++) {
-      if (G.oceanMask[r][0] && ms.revealed[r][0]) {
-        queue.push([r, 0]);
-        visited[r][0] = true;
+    if (center && G.oceanMask[center[0]][center[1]] && ms.revealed[center[0]][center[1]]) {
+      queue.push([center[0], center[1]]);
+      visited[center[0]][center[1]] = true;
+    }
+
+    if (!queue.length && center) {
+      for (let dr = -1; dr <= 1; dr++) {
+        const r = center[0] + dr, c = center[1];
+        if (r >= 0 && r < rows && c >= 0 && c < cols && G.oceanMask[r][c] && ms.revealed[r][c]) {
+          queue.push([r, c]);
+          visited[r][c] = true;
+        }
+      }
+    }
+
+    if (!queue.length) {
+      for (let r = 0; r < rows; r++) {
+        if (G.oceanMask[r][edges.entryCol] && ms.revealed[r][edges.entryCol]) {
+          queue.push([r, edges.entryCol]);
+          visited[r][edges.entryCol] = true;
+        }
       }
     }
 
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === cols - 1) return true;
+      if (c === edges.exitCol) return true;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           if (dr === 0 && dc === 0) continue;
@@ -207,6 +682,7 @@
     var swimmer = findSwimmer();
     if (swimmer) {
       // Swimmer absorbs the hit — dies (permadeath), but game continues
+      ms.pendingClearedMine = { r: r, c: c };
       swimmer.alive = false;
       G.player.totalCrewDeaths = (G.player.totalCrewDeaths || 0) + 1;
       G.drawCell(r, c);
@@ -257,15 +733,45 @@
     G.buildDistanceMap();
     var path = G.findRevealedPath(ms.revealed);
     if (path) {
-      // Draw the route on top of the minesweeper board
-      G.drawTransitRoute(path, G.gctx);
       G.setStatus('Route plotted! Preparing to set sail...', 'win-msg');
     }
 
-    // Brief delay so player can see the plotted route, then crossfade to transit
+    // Brief delay so the win beat lands, then draw the route on the solved board
+    // before handing off to transit.
     setTimeout(function () {
-      G.crossfadeToNextStage();
-    }, 1500);
+      G.animateRoutePlot(path, function () {
+        G.transitionMinesToTransit(path);
+      });
+    }, 180);
+  };
+
+  G.resolvePendingClearedMine = function () {
+    var ms = G.ms;
+    if (!ms.pendingClearedMine) return;
+
+    var r = ms.pendingClearedMine.r;
+    var c = ms.pendingClearedMine.c;
+    ms.pendingClearedMine = null;
+    ms.mines[r][c] = false;
+    ms.revealed[r][c] = true;
+    G.computeNumbers(ms);
+    ms.fadingMine = { r: r, c: c, startedAt: performance.now(), duration: 420 };
+
+    function tick(now) {
+      if (!ms.fadingMine) return;
+      if (now - ms.fadingMine.startedAt >= ms.fadingMine.duration) {
+        ms.fadingMine = null;
+        G.drawBoard();
+        G.savePlayer();
+        return;
+      }
+      G.drawBoard();
+      requestAnimationFrame(tick);
+    }
+
+    G.drawBoard();
+    requestAnimationFrame(tick);
+    G.savePlayer();
   };
 
   // First-click safety: clear all mines within radius 2 of first click

@@ -1,4 +1,4 @@
-const CACHE = 'hormuz-v16';
+const CACHE = 'hormuz-v17';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const ASSETS = [
   './js/sounds.js',
   './js/map.js',
   './js/ships.js',
+  './js/roles.js',
   './js/crew.js',
   './js/worldmap.js',
   './js/dock.js',
@@ -42,7 +43,28 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
-  );
+  if (e.request.method !== 'GET') return;
+
+  const url = new URL(e.request.url);
+  const sameOrigin = url.origin === self.location.origin;
+
+  if (!sameOrigin) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      const response = await fetch(e.request);
+      if (response && response.ok) {
+        cache.put(e.request, response.clone());
+      }
+      return response;
+    } catch (err) {
+      const cached = await caches.match(e.request);
+      if (cached) return cached;
+      throw err;
+    }
+  })());
 });

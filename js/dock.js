@@ -45,7 +45,11 @@
       var ha = hashStr(a + turn), hb = hashStr(b + turn);
       return ha - hb;
     });
-    return shuffled.slice(0, 4);
+    var headlines = shuffled.slice(0, 3);
+    if (G.player && G.player.market && G.player.market.headline) {
+      headlines.unshift(G.player.market.headline);
+    }
+    return headlines;
   };
 
   function hashStr(s) {
@@ -56,11 +60,19 @@
     return h;
   }
 
+  function closeShipOnOutside(e) {
+    if (!e.target.closest('.menu-ship-wrap')) {
+      closeShipMenu();
+    }
+  }
+
+  var shipOutsideListenerBound = false;
+
   // --- Main dock render ---
   G.renderDock = function () {
-    // Bank & week
+    // Bank & day
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
-    document.getElementById('menuWeek').textContent = 'Week ' + G.player.turn;
+    document.getElementById('menuWeek').textContent = 'Day ' + G.player.turn;
 
     // Ensure starting crew exists
     G.ensureStartingCrew();
@@ -75,71 +87,145 @@
     renderNewsTicker();
 
     // Close ship menu when clicking outside
-    document.addEventListener('click', function closeShipOnOutside(e) {
-      if (!e.target.closest('.menu-ship-wrap')) {
-        closeShipMenu();
-      }
-    });
+    if (!shipOutsideListenerBound) {
+      document.addEventListener('click', closeShipOnOutside);
+      shipOutsideListenerBound = true;
+    }
   };
 
-  // --- Crew popover (dismiss option) ---
+  // --- Crew hover card ---
   var _activePopover = null;
+  var _popoverCloseTimer = null;
 
-  G.showCrewPopover = function (member, role, cardEl) {
+  function isPortState() {
+    if (G.state === 'MENU') return true;
+    return !!(G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0 &&
+      G.voyage.stages[G.voyage.stageIdx] &&
+      G.voyage.stages[G.voyage.stageIdx].id === 'manage_port');
+  }
+
+  function formatTraitValue(member) {
+    if (member.quirkVal === undefined || member.quirkVal === null || member.quirkVal === '') return '';
+    return member.quirkVal < 1
+      ? Math.round(member.quirkVal * 100) + '%'
+      : member.quirkVal;
+  }
+
+  function hasTraitLine(member) {
+    return !!(member &&
+      member.quirkStat && member.quirkStat !== 'undefined' &&
+      member.quirkVal !== undefined && member.quirkVal !== null && member.quirkVal !== '' &&
+      member.quirkVal !== 'undefined');
+  }
+
+  function getCrewFlavor(member) {
+    return member.quirkLabel || '';
+  }
+
+  function getDeadCrewDisposition(member) {
+    if (member && member.onDeath) return member.onDeath;
+    var options = [
+      'Commit to the sea',
+      'Cremate remains',
+      'Hold a short funeral',
+      'Wrap for burial'
+    ];
+    var seed = member && member.charId !== undefined ? member.charId : 0;
+    return options[Math.abs(seed) % options.length];
+  }
+
+  function buildCrewPopoverHtml(member, role) {
+    var roleMeta = G.getRoleByName ? G.getRoleByName(role) : null;
+    var html = '';
+
+    if (roleMeta) {
+      html += '<div class="crew-popover-role">' + roleMeta.name + '</div>';
+      html += '<div class="crew-popover-role-desc">' + roleMeta.desc + '</div>';
+      html += '<div class="crew-popover-role-effect">' + roleMeta.effect + '</div>';
+    } else {
+      html += '<div class="crew-popover-role">' + role + '</div>';
+    }
+
+    html += '<div class="crew-popover-sep"></div>';
+
+    if (member) {
+      html += '<div class="crew-popover-name">' + member.name + '</div>';
+      if (getCrewFlavor(member)) {
+        html += '<div class="crew-popover-crew-desc">' + getCrewFlavor(member) + '</div>';
+      }
+      if (hasTraitLine(member)) {
+        html += '<div class="crew-popover-quirk">' + member.quirkStat + ' +' + formatTraitValue(member) + '</div>';
+      }
+    } else {
+      html += '<div class="crew-popover-empty">No crew assigned. Hire someone to fill this role.</div>';
+    }
+
+    return html;
+  }
+
+  function positionCrewPopover(popover, anchorEl) {
+    var cardRect = anchorEl.getBoundingClientRect();
+    var left = cardRect.left + Math.round(cardRect.width / 2) - 115;
+    if (left < 6) left = 6;
+    if (left + 230 > window.innerWidth) left = window.innerWidth - 236;
+    popover.style.left = left + 'px';
+    popover.style.top = (cardRect.bottom + 6) + 'px';
+  }
+
+  function cancelCrewPopoverClose() {
+    if (_popoverCloseTimer) {
+      clearTimeout(_popoverCloseTimer);
+      _popoverCloseTimer = null;
+    }
+  }
+
+  G.hideCrewPopoverSoon = function () {
+    cancelCrewPopoverClose();
+    _popoverCloseTimer = setTimeout(function () {
+      closeCrewPopover();
+    }, 120);
+  };
+
+  G.showCrewPopover = function (member, role, cardEl, options) {
+    options = options || {};
+    if (options.dismissible == null) options.dismissible = isPortState();
     closeCrewPopover();
 
     var popover = document.createElement('div');
     popover.className = 'crew-popover';
-
     var info = document.createElement('div');
-    info.innerHTML =
-      '<div class="crew-popover-name">' + member.name + '</div>' +
-      '<div class="crew-popover-quirk">' + member.quirkLabel +
-      ' <small>(' + member.quirkStat + ' +' +
-      (member.quirkVal < 1 ? Math.round(member.quirkVal * 100) + '%' : member.quirkVal) +
-      ')</small></div>';
+    info.innerHTML = buildCrewPopoverHtml(member, role);
     popover.appendChild(info);
 
-    var dismissBtn = document.createElement('button');
-    dismissBtn.className = 'crew-popover-dismiss';
-    dismissBtn.textContent = 'Dismiss';
-    dismissBtn.onclick = function (e) {
-      e.stopPropagation();
-      var idx = G.getCrewIndexForRole(role);
-      if (idx >= 0) G.dismissCrewMember(idx);
-      closeCrewPopover();
-      G.renderTacticalCrewBar();
-      updateSetSailBtn();
-      document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
-    };
-    popover.appendChild(dismissBtn);
+    if (options.dismissible && member) {
+      var dismissBtn = document.createElement('button');
+      dismissBtn.className = 'crew-popover-dismiss';
+      dismissBtn.textContent = member.alive === false ? getDeadCrewDisposition(member) : 'Dismiss';
+      dismissBtn.onclick = function (e) {
+        e.stopPropagation();
+        var idx = G.getCrewIndexForRole(role);
+        if (idx >= 0) G.dismissCrewMember(idx);
+        closeCrewPopover();
+        G.renderTacticalCrewBar();
+        updateSetSailBtn();
+        document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+      };
+      popover.appendChild(dismissBtn);
+    }
 
-    // Append to body, position with fixed coords
     document.body.appendChild(popover);
+    positionCrewPopover(popover, cardEl);
 
-    var cardRect = cardEl.getBoundingClientRect();
-    var left = cardRect.left + (cardRect.width / 2) - 80;
-    if (left < 4) left = 4;
-    if (left + 160 > window.innerWidth) left = window.innerWidth - 164;
-    popover.style.left = left + 'px';
-    popover.style.top = (cardRect.bottom + 4) + 'px';
+    popover.addEventListener('mouseenter', cancelCrewPopoverClose);
+    popover.addEventListener('mouseleave', function () {
+      G.hideCrewPopoverSoon();
+    });
 
     _activePopover = { el: popover, cardEl: cardEl };
-
-    // Close on outside click
-    setTimeout(function () {
-      document.addEventListener('click', closePopoverOnOutsideClick);
-    }, 0);
   };
 
-  function closePopoverOnOutsideClick(e) {
-    if (_activePopover && !_activePopover.el.contains(e.target) && !_activePopover.cardEl.contains(e.target)) {
-      closeCrewPopover();
-    }
-  }
-
   function closeCrewPopover() {
-    document.removeEventListener('click', closePopoverOnOutsideClick);
+    cancelCrewPopoverClose();
     if (_activePopover) {
       _activePopover.el.remove();
       _activePopover = null;
@@ -165,15 +251,24 @@
       var oilPct = (G.voyage && typeof G.voyage.oilPct === 'number') ? Math.round(G.voyage.oilPct) : 0;
 
       btn.innerHTML =
-        '<div class="ship-panel-name">' + ship.name + '</div>' +
-        '<div class="ship-oil-bar"><div class="ship-oil-fill" style="width:' + oilPct + '%"></div></div>' +
+        '<div class="ship-panel-head">' +
+          '<span class="ship-panel-icon ship-icon" aria-hidden="true"></span>' +
+          '<div class="ship-panel-class">' + ship.shipClass + '</div>' +
+        '</div>' +
+        '<div class="ship-cargo-row">' +
+          '<span class="ship-cargo-icon" aria-hidden="true"></span>' +
+          '<div class="ship-oil-bar"><div class="ship-oil-fill" style="width:' + oilPct + '%"></div></div>' +
+        '</div>' +
         '<div class="ship-hp-row">' +
           '<span class="ship-hp-label">HP</span>' +
           '<div class="ship-hp-blocks">' + blocks + '</div>' +
-          '<button class="ship-repair-btn' + (damaged ? ' needed' : '') + '" onclick="repairShip()" title="' + (damaged ? 'Repair hull' : 'Hull intact') + '">🔧</button>' +
         '</div>';
     } else {
-      btn.innerHTML = '<div class="ship-panel-name">No Ship</div>';
+      btn.innerHTML =
+        '<div class="ship-panel-head">' +
+          '<span class="ship-panel-icon ship-icon" aria-hidden="true"></span>' +
+          '<div class="ship-panel-class">No Ship</div>' +
+        '</div>';
     }
   }
 
@@ -217,7 +312,7 @@
 
       // Repair
       if (owned.hp < ship.hp) {
-        var repairCost = Math.round(ship.cost * 0.1);
+        var repairCost = G.getRepairCost(playerShip);
         var canRepair = G.player.bank >= repairCost;
         var repairBtn = document.createElement('button');
         repairBtn.className = 'ship-menu-btn' + (canRepair ? '' : ' disabled');
@@ -225,9 +320,7 @@
         repairBtn.disabled = !canRepair;
         if (canRepair) {
           repairBtn.onclick = function () {
-            G.player.bank -= repairCost;
-            owned.hp = ship.hp;
-            G.savePlayer();
+            window.repairShip();
             closeShipMenu();
             G.renderDock();
           };
@@ -256,10 +349,7 @@
             ' — ' + G.formatMoney(tierData.cost) + '</small>';
           if (canAfford) {
             btn.onclick = function () {
-              G.player.bank -= tierData.cost;
-              G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
-              G.player.activeShipIdx = G.player.ownedShips.length - 1;
-              G.savePlayer();
+              G.purchaseShip(tierData.tier);
               closeShipMenu();
               G.renderDock();
             };
@@ -320,10 +410,7 @@
             ' — ' + G.formatMoney(tierData.cost) + '</small>';
           if (canAfford) {
             btn.onclick = function () {
-              G.player.bank -= tierData.cost;
-              G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
-              G.player.activeShipIdx = G.player.ownedShips.length - 1;
-              G.savePlayer();
+              G.purchaseShip(tierData.tier);
               closeShipMenu();
               G.renderDock();
             };
@@ -352,6 +439,7 @@
     var modal = document.getElementById('hireModal');
     var list = document.getElementById('hireCandidateList');
     list.innerHTML = '';
+    modal.setAttribute('data-role', role);
 
     document.getElementById('hireModalTitle').textContent = 'Hire ' + role;
 
@@ -402,6 +490,16 @@
     document.getElementById('hireModal').classList.remove('active');
   };
   window.closeHireModal = function () { G.closeHireModal(); };
+  window.hireIntern = function () {
+    var modal = document.getElementById('hireModal');
+    var role = modal ? modal.getAttribute('data-role') : '';
+    if (!role) return;
+    if (!G.confirmHireForRole(10, role)) return;
+    G.closeHireModal();
+    G.renderTacticalCrewBar();
+    updateSetSailBtn();
+    document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+  };
 
   // --- Set sail ---
   G.dockSetSail = function () {

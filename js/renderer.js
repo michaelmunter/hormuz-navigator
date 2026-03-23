@@ -22,6 +22,47 @@
   var _sbctx = null;
   var _gameBuffer = null;
   var _gbctx = null;
+  var _portraitCache = {};
+
+  function getPortraitImage(charId) {
+    if (charId === undefined || charId === null) return null;
+    if (_portraitCache[charId]) return _portraitCache[charId];
+    var img = new Image();
+    img.onload = function () {
+      if (!G.hoverCell) return;
+      if (G.state !== 'MINESWEEPER') return;
+      var r = G.hoverCell.r, c = G.hoverCell.c;
+      if (r >= 0 && c >= 0) G.drawCell(r, c);
+    };
+    img.src = G.getPortraitSrc(charId);
+    _portraitCache[charId] = img;
+    return img;
+  }
+
+  function drawSwimmerHoverToken(ctx, x, y, cellSize) {
+    if (!G.getCrewForRole) return;
+    var swimmer = G.getCrewForRole('Swimmer');
+    if (!swimmer || swimmer.alive === false) return;
+
+    var img = getPortraitImage(swimmer.charId);
+    if (!img || !img.complete || !img.naturalWidth) return;
+
+    var tokenSize = Math.max(12, Math.round(cellSize * 0.72));
+    var tokenX = x + Math.round((cellSize - tokenSize) / 2);
+    var tokenY = y + Math.round((cellSize - tokenSize) / 2);
+    var cropSize = img.naturalWidth;
+    var cropY = Math.max(0, Math.round((img.naturalHeight - cropSize) * 0.32));
+
+    ctx.save();
+    ctx.globalAlpha = 0.76;
+    ctx.fillStyle = 'rgba(18, 24, 44, 0.16)';
+    ctx.fillRect(tokenX - 1, tokenY - 1, tokenSize + 2, tokenSize + 2);
+    ctx.drawImage(img, 0, cropY, cropSize, cropSize, tokenX, tokenY, tokenSize, tokenSize);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tokenX + 0.5, tokenY + 0.5, tokenSize - 1, tokenSize - 1);
+    ctx.restore();
+  }
 
   G.initCanvases = function () {
     G.oceanCanvas = document.getElementById('oceanCanvas');
@@ -50,6 +91,8 @@
     _gbctx = _gameBuffer.getContext('2d');
     document.getElementById('boardWrap').style.width = canvasW + 'px';
     document.getElementById('boardWrap').style.height = canvasH + 'px';
+    var barInner = document.getElementById('tacticalBarInner');
+    if (barInner) barInner.style.width = canvasW + 'px';
   };
 
   G.drawLayers = function (canvasW, canvasH) {
@@ -67,6 +110,9 @@
       for (let c = 0; c < G.cols; c++) {
         G.drawCell(r, c);
       }
+    }
+    if (G.state === 'MINESWEEPER' && G.ms && !G.ms.introActive && G.drawMinesweeperEntryShip) {
+      G.drawMinesweeperEntryShip();
     }
   };
 
@@ -89,11 +135,13 @@
       ctx.strokeStyle = 'rgba(90, 110, 170, 0.25)';
       ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
 
-      if (ms.mines[r][c]) {
-        if (ms.revealed[r][c] === 'boom') {
-          ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
-          ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+      if (ms.revealed[r][c] === 'boom') {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+        ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+        if (ms.mines[r][c]) {
+          G.drawMine(x, y);
         }
+      } else if (ms.mines[r][c]) {
         G.drawMine(x, y);
       } else if (ms.grid[r][c] > 0) {
         ctx.fillStyle = NUM_COLORS[ms.grid[r][c]] || '#000';
@@ -101,6 +149,14 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(ms.grid[r][c], x + CELL / 2, y + CELL / 2 + 1);
+      }
+
+      if (ms.fadingMine && ms.fadingMine.r === r && ms.fadingMine.c === c) {
+        var fadeProgress = Math.min(1, (performance.now() - ms.fadingMine.startedAt) / ms.fadingMine.duration);
+        ctx.save();
+        ctx.globalAlpha = 1 - fadeProgress;
+        G.drawMine(x, y);
+        ctx.restore();
       }
     } else {
       // Unrevealed cell — clear first so removed flags disappear
@@ -123,6 +179,7 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
         ctx.lineWidth = 1;
+        drawSwimmerHoverToken(ctx, x, y, CELL);
       }
 
       if (ms.flagged[r][c]) {
@@ -189,24 +246,55 @@
     ctx.fillRect(cx - 3 * s, y + CELL - 7 * s, 6 * s, 2 * s);
   };
 
-  // Draw dashed transit route line through path cell centers
-  G.drawTransitRoute = function (path, ctx) {
+  // Draw transit route line through path cell centers.
+  // progress is 0..1 and controls how much of the path is drawn.
+  G.drawTransitRoute = function (path, ctx, progress, options) {
     if (!path || path.length < 2) return;
     var CELL = G.CELL;
+    var clamped = (typeof progress === 'number') ? Math.max(0, Math.min(1, progress)) : 1;
+    if (clamped <= 0) return;
+    options = options || {};
 
-    // Draw full path as muted dotted line (always visible for navigation)
     ctx.save();
     ctx.lineJoin = 'round';
-    ctx.setLineDash([6, 8]);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash(options.dash || [6, 8]);
+    ctx.strokeStyle = options.strokeStyle || 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = options.lineWidth || 1.5;
+    if (options.shadowColor) {
+      ctx.shadowColor = options.shadowColor;
+      ctx.shadowBlur = options.shadowBlur || 0;
+    }
     ctx.beginPath();
-    ctx.moveTo(path[0][1] * CELL + CELL / 2, path[0][0] * CELL + CELL / 2);
-    for (var i = 1; i < path.length; i++) {
-      ctx.lineTo(path[i][1] * CELL + CELL / 2, path[i][0] * CELL + CELL / 2);
+    var firstX = path[0][1] * CELL + CELL / 2;
+    var firstY = path[0][0] * CELL + CELL / 2;
+    ctx.moveTo(firstX, firstY);
+
+    if (clamped >= 1) {
+      for (var i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i][1] * CELL + CELL / 2, path[i][0] * CELL + CELL / 2);
+      }
+    } else {
+      var segments = path.length - 1;
+      var scaled = clamped * segments;
+      var wholeSegments = Math.floor(scaled);
+      var partial = scaled - wholeSegments;
+
+      for (var j = 1; j <= wholeSegments; j++) {
+        ctx.lineTo(path[j][1] * CELL + CELL / 2, path[j][0] * CELL + CELL / 2);
+      }
+
+      if (wholeSegments < segments) {
+        var from = path[wholeSegments];
+        var to = path[wholeSegments + 1];
+        var fromX = from[1] * CELL + CELL / 2;
+        var fromY = from[0] * CELL + CELL / 2;
+        var toX = to[1] * CELL + CELL / 2;
+        var toY = to[0] * CELL + CELL / 2;
+        ctx.lineTo(fromX + (toX - fromX) * partial, fromY + (toY - fromY) * partial);
+      }
     }
     ctx.stroke();
-
     ctx.setLineDash([]);
     ctx.restore();
   };
@@ -229,12 +317,10 @@
   // Size is derived from the image's aspect ratio, scaled to a fixed length in cells.
   var BASE_SHIP_LENGTH = 1.8; // ship length in grid cells for gridWidth 1
 
-  G.drawShip = function (px, py, shipAngle) {
+  G.drawShipOnContext = function (ctx, px, py, shipAngle) {
     var CELL = G.CELL;
     var img = G.sprites.ship;
-    var ctx = G.sctx;
-    if (!img.complete || !img.naturalWidth) return;
-    // Scale ship size by gridWidth
+    if (!ctx || !img.complete || !img.naturalWidth) return;
     var gw = (G.activeShip && G.activeShip.gridWidth) || 1;
     var lengthCells = BASE_SHIP_LENGTH + (gw - 1) * 0.6;
     var len = CELL * lengthCells;
@@ -244,6 +330,11 @@
     ctx.rotate(shipAngle + Math.PI / 2);
     ctx.drawImage(img, -beam / 2, -len / 2, beam, len);
     ctx.restore();
+  };
+
+  G.drawShip = function (px, py, shipAngle) {
+    var ctx = G.sctx;
+    G.drawShipOnContext(ctx, px, py, shipAngle);
   };
 
   // Ship destroyed — draw the ship at its last position with an explosion overlay

@@ -8,6 +8,8 @@
   var RAMP_DURATION = 12;
   // Minimum distance (in cells) between missile spawn and ship — prevents instant-hit missiles
   var MIN_MISSILE_SPAWN_DIST_CELLS = 25;
+  var SHIP_ENTRY_OFFSET_CELLS = 1.35;
+  var SHIP_EXIT_DISTANCE_CELLS = 1.4;
 
   // Turn-based difficulty scaling — Iran's mining and tech progress.
   // Threat progression: FPV drones from turn 0, shaheds unlock at turn 3, missiles at turn 5.
@@ -62,7 +64,8 @@
     effects: [],            // visual effects (explosions, splashes)
     landEdgeCells: null,
     config: null,
-    elapsed: 0              // seconds since transit leg started (for grace period)
+    elapsed: 0,             // seconds since transit leg started (for grace period)
+    startDelay: 0           // short reveal delay before the ship begins moving
   };
 
   G.startTransit = function (direction) {
@@ -89,14 +92,13 @@
     t.config = cfg;
 
     // Find path through revealed cells
-    const path = G.findRevealedPath(ms.revealed);
+    const path = G.findRevealedPath(ms.revealed, direction);
     if (!path) {
       G.setStatus('No clear path found! Something went wrong.', 'lose-msg');
       return;
     }
 
-    // Reverse path for return trip
-    t.path = direction === 'return' ? path.slice().reverse() : path;
+    t.path = path;
     t.direction = direction;
     t.active = true;
     G.state = direction === 'forward' ? 'TRANSIT_FORWARD' : 'TRANSIT_RETURN';
@@ -113,9 +115,11 @@
     t.moveAccum = 0;
     t.transitSeconds = 0;
     t.dead = false;
+    t.entryOffset = 0;
     t.sailingOff = false;
     t.sailOffAccum = 0;
     t.elapsed = 0;
+    t.startDelay = 0.18;
     t.lastShotTime = -SHOTGUN_COOLDOWN; // allow immediate first shot
 
     // Determine initial heading angle from path direction
@@ -127,13 +131,14 @@
       t.shipAngle = 0;
     }
 
+    // Read HP from the player's owned ship so port repairs and damage carry
+    var ps = G.getActivePlayerShip();
+    t.hp = ps ? ps.owned.hp : 1;
+    t.maxHp = ps ? ps.tierData.hp : 1;
+
     if (direction === 'forward') {
       t.shahedKills = 0;
       t.fpvKills = 0;
-      // Read HP from the player's owned ship (may be damaged from prior runs)
-      var ps = G.getActivePlayerShip();
-      t.hp = ps ? ps.owned.hp : 1;
-      t.maxHp = ps ? ps.tierData.hp : 1;
     }
 
     t.landEdgeCells = G.getLandEdgeCells();
@@ -146,6 +151,7 @@
       ''
     );
     if (G.renderTacticalCrewBar) G.renderTacticalCrewBar();
+    if (G.updateCrewActions) G.updateCrewActions();
     if (G.updateTransitButtons) G.updateTransitButtons();
 
     // Start transit timer
@@ -191,9 +197,20 @@
   var SHOTGUN_RANGE_CELLS = 9.6;       // max range in cells
   var SHOTGUN_COOLDOWN = 1.5;          // seconds between shots
   var SHOTGUN_CLOSE_RANGE_CELLS = 3;   // close range for bonus damage
+  G.transit.shotgunCooldown = SHOTGUN_COOLDOWN;
 
   // Interpolated ship pixel position — shared by collision, click handler, and renderer
   function getShipPixelPos(t) {
+    if (t.entryOffset > 0 && t.path && t.path.length) {
+      var firstCell = t.path[0];
+      var entryPx = firstCell[1] * G.CELL + G.CELL / 2;
+      var entryPy = firstCell[0] * G.CELL + G.CELL / 2;
+      var backDist = t.entryOffset * G.CELL;
+      entryPx -= Math.cos(t.shipAngle) * backDist;
+      entryPy -= Math.sin(t.shipAngle) * backDist;
+      return { x: entryPx, y: entryPy };
+    }
+
     // If sailing off-screen, extrapolate beyond the last path cell
     if (t.sailingOff) {
       var lastIdx = t.path.length - 1;
@@ -215,6 +232,11 @@
       if (fi !== t.shipPos) {
         px += (t.path[fi][1] * G.CELL + G.CELL / 2 - px) * t.moveAccum;
         py += (t.path[fi][0] * G.CELL + G.CELL / 2 - py) * t.moveAccum;
+      } else {
+        // Past the final route cell, keep drifting along the current heading
+        // instead of appearing to pause on the endpoint.
+        px += Math.cos(t.shipAngle) * t.moveAccum * G.CELL;
+        py += Math.sin(t.shipAngle) * t.moveAccum * G.CELL;
       }
     } else if (t.moveAccum < 0) {
       var bi = Math.max(t.shipPos - 1, 0);
@@ -232,6 +254,12 @@
     const cfg = t.config;
     const returnMult = t.direction === 'return' ? 1.5 : 1.0;
 
+    if (t.startDelay > 0) {
+      t.startDelay = Math.max(0, t.startDelay - dt);
+      if (G.updateCrewActions) G.updateCrewActions();
+      return;
+    }
+
     // Smooth speed: lerp toward target
     var speedDiff = t.shipSpeedTarget - t.shipSpeed;
     if (Math.abs(speedDiff) < 0.01) {
@@ -240,9 +268,18 @@
       t.shipSpeed += speedDiff * Math.min(1, dt * SPEED_ACCEL);
     }
 
-    // Move ship — moveAccum ranges (-1..1), crossing ±1 advances/retreats shipPos
+    // Move ship — first finish the off-path sail-in, then advance along the route.
     if (Math.abs(t.shipSpeed) > 0.001) {
-      t.moveAccum += cfg.speed * t.shipSpeed * dt;
+      var moveDelta = cfg.speed * t.shipSpeed * dt;
+      var startedSailOffThisFrame = false;
+
+      if (t.entryOffset > 0 && moveDelta > 0) {
+        var consumed = Math.min(t.entryOffset, moveDelta);
+        t.entryOffset -= consumed;
+        moveDelta -= consumed;
+      }
+
+      t.moveAccum += moveDelta;
       while (t.moveAccum >= 1) {
         t.moveAccum -= 1;
         t.shipPos++;
@@ -250,15 +287,19 @@
           // Ship reached end of path — start sailing off-screen
           if (!t.sailingOff) {
             t.sailingOff = true;
-            t.sailOffAccum = 0;
+            startedSailOffThisFrame = true;
+            // Preserve the exact extrapolated position beyond the last route cell.
+            t.sailOffAccum = 1 + Math.max(0, t.moveAccum);
             // Keep last heading for exit direction
           }
         }
       }
       // If sailing off, accumulate distance and complete when off-screen
       if (t.sailingOff) {
-        t.sailOffAccum = (t.sailOffAccum || 0) + cfg.speed * Math.abs(t.shipSpeed) * dt;
-        if (t.sailOffAccum > 3) { // ~3 cells off-screen
+        if (!startedSailOffThisFrame) {
+          t.sailOffAccum = (t.sailOffAccum || 0) + cfg.speed * Math.abs(t.shipSpeed) * dt;
+        }
+        if (t.sailOffAccum > SHIP_EXIT_DISTANCE_CELLS) {
           G.onTransitComplete();
           return;
         }
@@ -296,6 +337,7 @@
 
     // Track elapsed time for grace period and ramp
     t.elapsed += dt;
+    if (G.updateCrewActions) G.updateCrewActions();
 
     // Threat ramp: 0 during grace, ramps 0→1 over RAMP_DURATION after grace ends, then stays at 1
     var threatTime = Math.max(0, t.elapsed - GRACE_PERIOD);
@@ -497,6 +539,7 @@
     t.active = false;
     cancelAnimationFrame(t.animFrame);
     clearInterval(t.transitTimerInterval);
+    G.syncTransitHpToActiveShip();
 
     G.sounds.transitComplete();
     // Advance to next voyage stage (auto-stages or next interactive phase)
@@ -567,6 +610,7 @@
     // Cooldown check
     if (t.elapsed - t.lastShotTime < SHOTGUN_COOLDOWN) return false;
     t.lastShotTime = t.elapsed;
+    if (G.updateCrewAction) G.updateCrewAction('Shotgunner');
 
     // Ship position
     var ship = getShipPixelPos(t);
@@ -633,6 +677,7 @@
     }
     // Update captain action text and transit buttons live
     if (G.updateCaptainAction) G.updateCaptainAction();
+    if (G.updateCrewAction) G.updateCrewAction('Shotgunner');
     if (G.updateTransitButtons) G.updateTransitButtons();
   };
 })();

@@ -10,13 +10,60 @@
 
   // --- Player state & persistence ---
   var SAVE_KEY = 'hormuz_save';
-  var SAVE_VERSION = 4;
+  var SAVE_VERSION = 8;
   var STARTING_BANK = 1000000; // $1M — Rustbucket is free starter ship
+  var MARKET_REFERENCE_PRICE = 82;
+  var MARKET_CARGO_COST_SCALE = 0.09;
 
   G.player = null;
 
-  G.createFreshPlayer = function () {
+  G.createFreshVoyage = function () {
     return {
+      stageIdx: -1,
+      port: '',
+      stages: [],
+      timer: null,
+      cargoLoaded: false,
+      oilPct: 0,
+      selling: false,
+      loading: false,
+      saleValue: 0,
+      cargoCost: 0,
+      targetOilPct: 0,
+      saleStartPct: 0
+    };
+  };
+
+  function _buildMarketHeadline(market, turn) {
+    var spread = market.sellPrice - market.buyPrice;
+    if (turn < 3) {
+      return 'Gulf crude trades at $' + market.buyPrice + ' buy / $' + market.sellPrice + ' sell as shipping lanes stay open.';
+    }
+    if (turn < 7) {
+      return 'War-risk jitters push Gulf crude to $' + market.buyPrice + ' buy / $' + market.sellPrice + ' sell.';
+    }
+    return 'Escalation sends Gulf crude to $' + market.buyPrice + ' buy / $' + market.sellPrice + ' sell with spreads at $' + spread + '.';
+  }
+
+  function _createMarketForTurn(turn, previousMarket) {
+    var previousMid = previousMarket ? (previousMarket.buyPrice + previousMarket.sellPrice) / 2 : MARKET_REFERENCE_PRICE;
+    var drift = turn < 3 ? 1.5 : (turn < 7 ? 3.5 : 5.5);
+    var noise = Math.round((Math.random() * 10) - 5);
+    var targetMid = Math.max(68, Math.round(previousMid + drift + noise));
+    var spreadBase = turn < 3 ? 14 : (turn < 7 ? 19 : 26);
+    var spread = spreadBase + Math.floor(Math.random() * 5);
+    var buyPrice = Math.max(58, targetMid - Math.floor(spread / 2));
+    var sellPrice = Math.max(buyPrice + 4, targetMid + Math.ceil(spread / 2));
+    return {
+      buyPrice: buyPrice,
+      sellPrice: sellPrice,
+      headline: _buildMarketHeadline({ buyPrice: buyPrice, sellPrice: sellPrice }, turn)
+    };
+  }
+
+  G.createFreshPlayer = function () {
+    var market = _createMarketForTurn(0, null);
+    var player = {
       bank: STARTING_BANK,
       crew: [],
       ownedShips: [{ tier: 1, hp: 1 }], // start with The Rustbucket
@@ -24,8 +71,17 @@
       turn: 0,
       equipment: [],
       inRun: false,
-      totalCrewDeaths: 0
+      totalCrewDeaths: 0,
+      conflictTier: 0,
+      market: market
     };
+    if (G.ensureHireState) G.ensureHireState(player);
+    return player;
+  };
+
+  G.getMapTier = function () {
+    if (!G.player || typeof G.player.conflictTier !== 'number') return 0;
+    return Math.max(0, G.player.conflictTier);
   };
 
   // Convenience: get active ship data (tier object + current HP)
@@ -39,7 +95,28 @@
 
   G.savePlayer = function () {
     try {
-      var payload = { version: SAVE_VERSION, player: G.player };
+      var stage = (G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0) ? G.voyage.stages[G.voyage.stageIdx] : null;
+      var shouldSaveMines = stage && (stage.id === 'mines_fwd' || stage.id === 'mines_ret') &&
+        G.ms && G.ms.mines && G.getMinesweeperSnapshot;
+      var voyageSnapshot = {
+        stageIdx: G.voyage.stageIdx,
+        port: G.voyage.port,
+        stages: G.voyage.stages,
+        cargoLoaded: G.voyage.cargoLoaded,
+        oilPct: G.voyage.oilPct,
+        selling: G.voyage.selling,
+        loading: G.voyage.loading,
+        saleValue: G.voyage.saleValue,
+        cargoCost: G.voyage.cargoCost,
+        targetOilPct: G.voyage.targetOilPct,
+        saleStartPct: G.voyage.saleStartPct
+      };
+      var payload = {
+        version: SAVE_VERSION,
+        player: G.player,
+        voyage: voyageSnapshot,
+        minesweeper: shouldSaveMines ? G.getMinesweeperSnapshot() : null
+      };
       localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
     } catch (e) { /* localStorage unavailable or full */ }
   };
@@ -54,8 +131,14 @@
         data = G.migrateSave(data);
       }
       G.player = data.player;
+      if (G.ensureHireState) G.ensureHireState();
+      if (!G.player.market) G.player.market = _createMarketForTurn(G.player.turn || 0, null);
+      G.voyage = Object.assign(G.createFreshVoyage(), data.voyage || {});
+      G.savedMinesweeper = data.minesweeper || null;
     } catch (e) {
       G.player = G.createFreshPlayer();
+      G.voyage = G.createFreshVoyage();
+      G.savedMinesweeper = null;
     }
   };
 
@@ -80,6 +163,29 @@
       }
       data.version = 4;
     }
+    if (data.version < 5) {
+      data.voyage = data.voyage || {};
+      if (typeof data.voyage.saleValue !== 'number') data.voyage.saleValue = 0;
+      data.version = 5;
+    }
+    if (data.version < 6) {
+      data.minesweeper = null;
+      data.version = 6;
+    }
+    if (data.version < 7) {
+      data.player.market = _createMarketForTurn(data.player.turn || 0, data.player.market || null);
+      data.voyage = data.voyage || {};
+      if (typeof data.voyage.cargoCost !== 'number') data.voyage.cargoCost = 0;
+      if (typeof data.voyage.saleStartPct !== 'number') data.voyage.saleStartPct = 0;
+      if (typeof data.player.conflictTier !== 'number') data.player.conflictTier = 0;
+      data.version = 7;
+    }
+    if (data.version < 8) {
+      if (G.ensureHireState) {
+        G.ensureHireState(data.player);
+      }
+      data.version = 8;
+    }
     return data;
   };
 
@@ -90,6 +196,71 @@
   G.formatMoney = function (amount) {
     return '$' + amount.toLocaleString();
   };
+
+  G.CRUDE_PRICE_PER_BARREL = MARKET_REFERENCE_PRICE;
+
+  G.getCurrentBuyPrice = function () {
+    return (G.player && G.player.market && G.player.market.buyPrice) || MARKET_REFERENCE_PRICE;
+  };
+
+  G.getCurrentSellPrice = function () {
+    return (G.player && G.player.market && G.player.market.sellPrice) || (MARKET_REFERENCE_PRICE + 8);
+  };
+
+  G.getCargoPurchaseCost = function (shipTierData) {
+    if (!shipTierData) return 0;
+    return Math.round(shipTierData.cargoValue * MARKET_CARGO_COST_SCALE * (G.getCurrentBuyPrice() / MARKET_REFERENCE_PRICE));
+  };
+
+  G.getCargoSaleValue = function (shipTierData) {
+    if (!shipTierData) return 0;
+    return Math.round(shipTierData.cargoValue * MARKET_CARGO_COST_SCALE * (G.getCurrentSellPrice() / MARKET_REFERENCE_PRICE));
+  };
+
+  G.getAffordableLoadRatio = function (shipTierData) {
+    var fullCost = G.getCargoPurchaseCost(shipTierData);
+    if (!fullCost) return 0;
+    return Math.max(0, Math.min(1, G.player.bank / fullCost));
+  };
+
+  G.rollMarket = function () {
+    if (!G.player) return;
+    G.player.market = _createMarketForTurn(G.player.turn, G.player.market || null);
+  };
+
+  function _formatBarrels(amount) {
+    return Math.round(amount).toLocaleString() + ' bbl';
+  }
+
+  function _getCargoCapacityBarrels(ship) {
+    if (!ship) return 0;
+    return (ship.cargoValue * MARKET_CARGO_COST_SCALE) / MARKET_REFERENCE_PRICE;
+  }
+
+  function _buildCargoSummary(options) {
+    var price = options.priceText || ('$' + MARKET_REFERENCE_PRICE + '/bbl');
+    var transferLabel = options.transferLabel || 'Transferred';
+    var transferText = options.transferText || '0 bbl';
+    var totalLabel = options.totalLabel || 'Trade total';
+    var totalText = options.totalText || '$0';
+    var totalClass = options.totalClass || '';
+    var extraRows = options.extraRows || [];
+    var extraHtml = '';
+    for (var i = 0; i < extraRows.length; i++) {
+      var row = extraRows[i];
+      extraHtml += '<div class="cargo-summary-row"><span class="cargo-summary-label">' + row.label + '</span><span class="cargo-summary-value' + (row.className ? ' ' + row.className : '') + '">' + row.text + '</span></div>';
+    }
+
+    return (
+      '<div class="cargo-summary">' +
+        '<div class="cargo-summary-title">Cargo Summary</div>' +
+        '<div class="cargo-summary-row"><span class="cargo-summary-label">Crude price</span><span class="cargo-summary-value">' + price + '</span></div>' +
+        '<div class="cargo-summary-row"><span class="cargo-summary-label">' + transferLabel + '</span><span class="cargo-summary-value">' + transferText + '</span></div>' +
+        '<div class="cargo-summary-row"><span class="cargo-summary-label">' + totalLabel + '</span><span class="cargo-summary-value' + (totalClass ? ' ' + totalClass : '') + '">' + totalText + '</span></div>' +
+        extraHtml +
+      '</div>'
+    );
+  }
 
   G.setStatus = function (text, className) {
     var el = document.getElementById('statusBar');
@@ -105,11 +276,50 @@
       G.initCanvases();
       G.initInput();
       G.loadPlayer();
-      G.initBoard(G.player.turn);
+      G.initBoard(G.getMapTier());
       G.cumulativeScore = G.player.bank;
+
+      if (G.player.inRun && G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0) {
+        var restoredStage = G.voyage.stages[G.voyage.stageIdx];
+        if (restoredStage && restoredStage.id === 'manage_port') {
+          G.activeShip = G.getActivePlayerShip() ? G.getActivePlayerShip().tierData : null;
+          G.roundScore = G.voyage.saleValue || 0;
+          if (G.voyage.selling && G.voyage.selling !== 'done') {
+            var remainingPct = Math.max(0, Math.min(100, Math.round(G.voyage.oilPct || 0)));
+            var saleStartPct = Math.max(0, Math.min(100, Math.round(G.voyage.saleStartPct || 0)));
+            var remainingValue = saleStartPct > 0
+              ? Math.round((G.voyage.saleValue || 0) * (remainingPct / saleStartPct))
+              : 0;
+            if (remainingValue > 0) G.player.bank += remainingValue;
+            G.voyage.oilPct = 0;
+            G.voyage.cargoLoaded = false;
+            G.voyage.selling = 'done';
+            G.voyage.saleStartPct = 0;
+            G.state = 'MENU';
+            G.updateBarMode('menu');
+            G.savePlayer();
+          } else {
+            G.state = G.voyage.selling === 'done' ? 'MENU' : 'AUTO_STAGE';
+            G.updateBarMode(G.voyage.selling === 'done' ? 'menu' : 'auto');
+          }
+          G.renderDock();
+          G.updateMapStageCard();
+          return;
+        }
+        if (restoredStage && (restoredStage.id === 'mines_fwd' || restoredStage.id === 'mines_ret') && G.savedMinesweeper) {
+          G.activeShip = G.getActivePlayerShip() ? G.getActivePlayerShip().tierData : null;
+          G.state = 'MINESWEEPER';
+          G.updateBarMode('gameplay');
+          G.restoreMinesweeper(G.savedMinesweeper);
+          G.renderDock();
+          G.updateMapStageCard();
+          return;
+        }
+      }
 
       if (G.player.inRun) {
         G.player.inRun = false;
+        G.voyage = G.createFreshVoyage();
         G.savePlayer();
       }
 
@@ -176,14 +386,7 @@
     { id: 'arriving',      label: 'Arriving home',      auto: 2000 }
   ];
 
-  G.voyage = {
-    stageIdx: -1,
-    port: '',
-    stages: [],
-    timer: null,
-    cargoLoaded: false,   // true after loading stage
-    oilPct: 0             // 0-100 for oil bar animation
-  };
+  G.voyage = G.createFreshVoyage();
 
   function buildVoyageStages(port) {
     return STAGE_DEFS.map(function (def) {
@@ -246,7 +449,7 @@
     G.voyage.stageIdx = -1; // will be incremented by advanceStage
 
     // Init board
-    G.initBoard(G.player.turn);
+    G.initBoard(G.getMapTier());
 
     G.player.inRun = true;
     G.savePlayer();
@@ -285,7 +488,7 @@
       switch (stage.id) {
         case 'mines_fwd':
           G.updateBarMode('gameplay');
-          G.initBoard(G.player.turn);
+          G.initBoard(G.getMapTier());
           G.state = 'MINESWEEPER';
           var diff = G.getDifficulty(G.player.turn);
           G.initMinesweeper(diff.mineRatio);
@@ -302,7 +505,7 @@
         case 'mines_ret':
           G.updateBarMode('gameplay');
           // Fresh minefield for return trip
-          G.initBoard(G.player.turn);
+          G.initBoard(G.getMapTier());
           G.state = 'MINESWEEPER';
           var diffRet = G.getDifficulty(G.player.turn);
           G.initMinesweeper(diffRet.mineRatio);
@@ -317,14 +520,19 @@
           break;
 
         case 'manage_port':
-          // Show port card with "Sell & Return" button
-          G.state = 'MENU';
-          G.updateBarMode('menu');
-          G.voyage.oilPct = 100;
+          // Arrive in port and immediately begin selling the cargo.
+          if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
+          G.state = 'AUTO_STAGE';
+          G.updateBarMode('auto');
+          G.voyage.saleStartPct = Math.max(0, Math.min(100, Math.round(G.voyage.oilPct || 0)));
+          G.voyage.oilPct = G.voyage.saleStartPct;
           G.voyage.selling = false;
-          G.roundScore = G.activeShip ? G.activeShip.cargoValue : 0;
+          G.voyage.saleValue = G.activeShip ? Math.round(G.getCargoSaleValue(G.activeShip) * (G.voyage.saleStartPct / 100)) : 0;
+          G.roundScore = G.voyage.saleValue;
           G.renderTacticalCrewBar();
           G.updateMapStageCard();
+          G.savePlayer();
+          window.sellAndReturn();
           break;
       }
     }
@@ -336,18 +544,20 @@
   function _sellCargoChunks(onDone) {
     var v = G.voyage;
     var chunks = 5;
-    var totalValue = G.roundScore;
+    var totalValue = v.saleValue || G.roundScore;
+    var startPct = Math.max(0, Math.min(100, Math.round(v.saleStartPct || v.oilPct || 0)));
     var chunkValue = Math.floor(totalValue / chunks);
     var chunkIdx = 0;
     function tick() {
       chunkIdx++;
       var earned = (chunkIdx === chunks) ? totalValue - chunkValue * (chunks - 1) : chunkValue;
       G.player.bank += earned;
-      G.voyage.oilPct = 100 - (chunkIdx / chunks) * 100;
+      G.voyage.oilPct = startPct * (1 - (chunkIdx / chunks));
       _updateOilBar();
       G.sounds.cargoSell();
       document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
       G.updateMapStageCard();
+      G.savePlayer();
       if (chunkIdx < chunks) {
         v.timer = setTimeout(tick, 350);
       } else {
@@ -361,23 +571,58 @@
     v.timer = setTimeout(tick, 400);
   }
 
+  function _loadCargoChunks(onDone) {
+    var v = G.voyage;
+    var chunks = 5;
+    var totalCost = v.cargoCost || 0;
+    var chunkCost = Math.floor(totalCost / chunks);
+    var targetPct = Math.max(0, Math.min(100, Math.round(v.targetOilPct || 0)));
+    var chunkIdx = 0;
+    function tick() {
+      chunkIdx++;
+      var spent = (chunkIdx === chunks) ? totalCost - chunkCost * (chunks - 1) : chunkCost;
+      G.player.bank -= spent;
+      G.voyage.oilPct = (chunkIdx / chunks) * targetPct;
+      _updateOilBar();
+      G.sounds.cargoLoad();
+      document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+      G.updateMapStageCard();
+      G.savePlayer();
+      if (chunkIdx < chunks) {
+        v.timer = setTimeout(tick, 350);
+      } else {
+        G.voyage.cargoLoaded = targetPct > 0;
+        G.voyage.oilPct = targetPct;
+        G.savePlayer();
+        if (G.renderShipButton) G.renderShipButton();
+        v.timer = setTimeout(onDone, 400);
+      }
+    }
+    v.timer = setTimeout(tick, 250);
+  }
+
   // ──────────────────────────────────────────────────────────
   //  CARGO LOADING IN DOCK (called from Set Sail button)
   // ──────────────────────────────────────────────────────────
   function _loadCargoAndSail() {
-    // Disable button while loading — preserve width
-    var btn = document.querySelector('.stage-sail-btn');
-    if (btn) {
-      btn.style.minWidth = btn.offsetWidth + 'px';
-      btn.classList.add('loading');
-      btn.textContent = 'Loading…';
-    }
+    var playerShip = G.getActivePlayerShip();
+    if (!playerShip) return;
+    var fullCost = G.getCargoPurchaseCost(playerShip.tierData);
+    var loadRatio = G.getAffordableLoadRatio(playerShip.tierData);
+    var targetOilPct = Math.max(0, Math.min(100, Math.round(loadRatio * 100)));
+    var cargoCost = Math.round(fullCost * loadRatio);
+    if (targetOilPct <= 0 || cargoCost <= 0) return;
+    G.voyage.loading = true;
     G.voyage.oilPct = 0;
     G.voyage.cargoLoaded = false;
-    _animateOil(0, 100, 1200, function () {
-      G.voyage.cargoLoaded = true;
-      G.sounds.cargoLoad();
-      if (G.renderShipButton) G.renderShipButton();
+    G.voyage.saleValue = 0;
+    G.voyage.cargoCost = cargoCost;
+    G.voyage.targetOilPct = targetOilPct;
+    G.updateMapStageCard();
+    G.savePlayer();
+    _loadCargoChunks(function () {
+      G.voyage.loading = false;
+      G.savePlayer();
       // Now actually start the voyage
       G.startVoyage();
     });
@@ -394,82 +639,115 @@
     var v = G.voyage;
     if (!v.stages || v.stages[v.stageIdx].id !== 'manage_port') return;
 
-    // Disable button while selling
-    var btn = document.querySelector('.stage-sail-btn');
-    if (btn) {
-      btn.style.minWidth = btn.offsetWidth + 'px';
-      btn.classList.add('loading');
-      btn.textContent = 'Selling…';
-    }
-
     v.selling = true;
     G.state = 'AUTO_STAGE';
     G.updateBarMode('auto');
     G.renderTacticalCrewBar();
+    G.savePlayer();
     _sellCargoChunks(function () {
       v.selling = 'done';
+      G.state = 'MENU';
+      G.updateBarMode('menu');
       G.updateMapStageCard();
-      // Auto-advance after brief pause
-      v.timer = setTimeout(function () {
-        G.advanceStage();
-      }, 1200);
+      G.savePlayer();
     });
   };
 
-  // ──────────────────────────────────────────────────────────
-  //  CROSSFADE — capture current board, swap content, fade old out
-  // ──────────────────────────────────────────────────────────
-  G.crossfadeToNextStage = function () {
-    var wrap = document.getElementById('boardWrap');
-    if (!wrap) { G.advanceStage(); return; }
+  G.animateRoutePlot = function (path, onDone) {
+    if (!path || path.length < 2) {
+      if (onDone) onDone();
+      return;
+    }
+    var preDelay = 1000;
+    var drawDuration = 2000;
+    var holdDuration = 260;
+    var startTime = 0;
 
-    // Capture ALL canvas layers as a composite overlay
-    var canvases = wrap.querySelectorAll('canvas');
-    if (!canvases.length) { G.advanceStage(); return; }
-
-    // Create a composite canvas matching wrap size
-    var compCanvas = document.createElement('canvas');
-    var rect = wrap.getBoundingClientRect();
-    compCanvas.width = rect.width;
-    compCanvas.height = rect.height;
-    var compCtx = compCanvas.getContext('2d');
-
-    // Draw each canvas layer in order (z-index order = DOM order)
-    for (var ci = 0; ci < canvases.length; ci++) {
-      var c = canvases[ci];
-      if (c.width > 0 && c.height > 0) {
-        compCtx.drawImage(c, 0, 0, rect.width, rect.height);
+    function animate(now) {
+      if (!startTime) startTime = now;
+      var elapsed = now - startTime;
+      if (elapsed < preDelay) {
+        G.drawBoard();
+        requestAnimationFrame(animate);
+        return;
       }
+      var progress = Math.min(1, (elapsed - preDelay) / drawDuration);
+      G.drawBoard();
+      G.drawTransitRoute(path, G.gctx, progress);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+        return;
+      }
+      setTimeout(function () {
+        if (onDone) onDone();
+      }, holdDuration);
     }
 
-    // Create overlay using the composite as a data URL on a canvas element
+    requestAnimationFrame(animate);
+  };
+
+  // ──────────────────────────────────────────────────────────
+  //  MINES -> TRANSIT HANDOFF
+  //  Fade from the solved board to a clean world-only overlay, then reveal transit.
+  // ──────────────────────────────────────────────────────────
+  G.transitionMinesToTransit = function (path) {
+    var wrap = document.getElementById('boardWrap');
+    if (!wrap) { G.advanceStage(); return; }
+    var rect = wrap.getBoundingClientRect();
     var overlay = document.createElement('canvas');
     overlay.className = 'board-crossfade';
-    overlay.width = compCanvas.width;
-    overlay.height = compCanvas.height;
+    overlay.width = rect.width;
+    overlay.height = rect.height;
     overlay.style.width = '100%';
     overlay.style.height = '100%';
+    overlay.style.opacity = '0';
     var ovCtx = overlay.getContext('2d');
-    ovCtx.drawImage(compCanvas, 0, 0);
+    var revealFadeDuration = 180;
+    var holdDuration = 220;
+
+    ovCtx.clearRect(0, 0, rect.width, rect.height);
+    if (G.oceanCanvas) ovCtx.drawImage(G.oceanCanvas, 0, 0, rect.width, rect.height);
+    if (path) G.drawTransitRoute(path, ovCtx, 1);
+    if (path && path.length && G.drawShipOnContext) {
+      var first = path[0];
+      var shipPx = first[1] * G.CELL + G.CELL / 2;
+      var shipPy = first[0] * G.CELL + G.CELL / 2;
+      var shipAngle = 0;
+      if (path.length >= 2) {
+        shipAngle = Math.atan2(path[1][0] - path[0][0], path[1][1] - path[0][1]);
+      }
+      G.drawShipOnContext(ovCtx, shipPx, shipPy, shipAngle);
+    }
+    if (G.landCanvas) ovCtx.drawImage(G.landCanvas, 0, 0, rect.width, rect.height);
+
     wrap.appendChild(overlay);
-
-    // Force layout — ensure overlay is painted before swapping content
     overlay.offsetHeight;
-
-    // Start the new stage underneath
-    G.advanceStage();
-
-    // Trigger the fade on next frame
+    overlay.style.transition = 'opacity ' + revealFadeDuration + 'ms ease-out';
     requestAnimationFrame(function () {
+      overlay.style.opacity = '1';
+    });
+
+    setTimeout(function () {
+      overlay.style.transition = 'opacity 0.32s ease-out';
       overlay.classList.add('fading');
+      var startedTransit = false;
       overlay.addEventListener('transitionend', function () {
+        if (!startedTransit) {
+          startedTransit = true;
+          setTimeout(function () {
+            G.advanceStage();
+          }, 90);
+        }
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
       });
-      // Fallback cleanup
       setTimeout(function () {
+        if (!startedTransit) {
+          startedTransit = true;
+          G.advanceStage();
+        }
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      }, 1200);
-    });
+      }, 700);
+    }, holdDuration);
   };
 
   // ──────────────────────────────────────────────────────────
@@ -615,6 +893,7 @@
       G.showGameOver();
     } else {
       G.cumulativeScore = G.player.bank;
+      if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
       G.showMenu();
     }
   };
@@ -636,7 +915,7 @@
     G.showMenu();
   };
 
-  // Retreat to port — costs 1 week, allows hiring at nearest port
+  // Retreat to port — costs 1 day, allows hiring at nearest port
   G.showRetreatOption = function () {
     var overlay = document.getElementById('retreatOverlay');
     if (!overlay) return;
@@ -646,11 +925,12 @@
   G.onRetreatContinue = function () {
     // Continue without swimmer
     document.getElementById('retreatOverlay').classList.remove('active');
+    if (G.resolvePendingClearedMine) G.resolvePendingClearedMine();
   };
 
   G.onRetreatToPort = function () {
     document.getElementById('retreatOverlay').classList.remove('active');
-    // Cost: 1 week
+    // Cost: 1 day
     G.player.turn++;
     // Stop minesweeper
     var ms = G.ms;
@@ -663,6 +943,7 @@
     G.voyage.stages = [];
     if (G.voyage.timer) { clearTimeout(G.voyage.timer); G.voyage.timer = null; }
     G.player.inRun = false;
+    if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
     G.savePlayer();
     G.showMenu();
   };
@@ -675,13 +956,11 @@
     G.state = 'MENU';
     G.resetCounterStyle();
     // Clear voyage state
-    G.voyage.stageIdx = -1;
-    G.voyage.stages = [];
-    G.voyage.oilPct = 0;
-    G.voyage.cargoLoaded = false;
     if (G.voyage.timer) { clearTimeout(G.voyage.timer); G.voyage.timer = null; }
+    G.voyage = G.createFreshVoyage();
+    if (G.ensureHireState) G.ensureHireState();
     G.updateBarMode('menu');
-    G.initBoard(G.player.turn);
+    G.initBoard(G.getMapTier());
     G.renderDock();
     G.updateMapStageCard();
   };
@@ -704,7 +983,9 @@
 
     // roundScore and bank already updated during selling stage
     G.player.turn++;
+    G.rollMarket();
     G.player.inRun = false;
+    if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
 
     // Sync transit HP back to owned ship
     var playerShip = G.getActivePlayerShip();
@@ -793,7 +1074,7 @@
     G.sprites.ship.src = G.activeShip.sprite;
     G.player.turn = 5;
     G.updateBarMode('gameplay');
-    G.initBoard(G.player.turn);
+    G.initBoard(G.getMapTier());
     G.state = 'MINESWEEPER';
     G.initMinesweeper(0);
     for (var r = 0; r < G.rows; r++) {
@@ -814,7 +1095,11 @@
 
   G.toggleMute = function () {
     G.soundEnabled = !G.soundEnabled;
-    document.getElementById('muteBtn').textContent = G.soundEnabled ? '\uD83D\uDD0A' : '\uD83D\uDD07';
+    var soundGlyph = document.getElementById('soundGlyph');
+    if (soundGlyph) {
+      soundGlyph.classList.toggle('sound-on', G.soundEnabled);
+      soundGlyph.classList.toggle('sound-off', !G.soundEnabled);
+    }
   };
 
   G.transitControl = function (action) {
@@ -876,23 +1161,24 @@
   };
 
   // --- Port action helpers ---
-  function _buildPortActions(playerShip, sailAction, sailLabel) {
+  function _buildPortActions(playerShip, sailAction, sailLabel, disabled) {
     sailLabel = sailLabel || 'Set Sail';
     var html = '<div class="stage-actions">';
-    html += '<button class="stage-sail-btn' + (G.hasCrewRole('Captain') ? '' : ' disabled') + '" onclick="' + sailAction + '">' + sailLabel + '</button>';
-    // Repair button if damaged
-    if (playerShip && playerShip.hp < playerShip.maxHp) {
-      var cost = _getRepairCost(playerShip);
-      var canRepair = G.player.bank >= cost;
-      html += '<button class="stage-repair-btn' + (canRepair ? '' : ' disabled') + '" onclick="repairShip()" title="Repair hull">';
-      html += '🔧 ' + G.formatMoney(cost);
+    var sailDisabled = disabled || !G.hasCrewRole('Captain');
+    html += '<button class="stage-sail-btn' + (sailDisabled ? ' disabled' : '') + '" onclick="' + sailAction + '">' + sailLabel + '</button>';
+    if (playerShip) {
+      var needsRepair = playerShip.hp < playerShip.maxHp;
+      var repairCost = needsRepair ? G.getRepairCost(playerShip) : 0;
+      var canRepair = needsRepair && !disabled && G.player.bank >= repairCost;
+      html += '<button class="stage-repair-btn' + (canRepair ? '' : ' disabled') + '" onclick="repairShip()" title="' + (needsRepair ? 'Repair hull' : 'Hull intact') + '">';
+      html += needsRepair ? ('🔧 ' + G.formatMoney(repairCost)) : '🔧 Repair';
       html += '</button>';
     }
     html += '</div>';
     return html;
   }
 
-  function _buildShipUpgrades(playerShip) {
+  function _buildShipUpgrades(playerShip, disabled) {
     if (!playerShip) return '';
     var currentTier = playerShip.tierData.tier;
     var html = '';
@@ -905,7 +1191,7 @@
         html += '<div class="stage-section-label">Upgrade Ship</div>';
         hasUpgrades = true;
       }
-      var canAfford = G.player.bank >= s.cost;
+      var canAfford = !disabled && G.player.bank >= s.cost;
       html += '<div class="stage-ship-upgrade' + (canAfford ? '' : ' disabled') + '" onclick="upgradeShip(' + s.tier + ')">';
       html += '<div><div class="stage-ship-upgrade-name">' + s.name + '</div>';
       html += '<div class="stage-ship-upgrade-info">' + s.hp + ' HP · ' + s.crewSlots.length + ' crew · Cargo ' + G.formatMoney(s.cargoValue) + '</div></div>';
@@ -915,13 +1201,18 @@
     return html;
   }
 
-  window.upgradeShip = function (tier) {
+  G.purchaseShip = function (tier) {
     var tierData = G.getShipTier(tier);
-    if (!tierData || G.player.bank < tierData.cost) return;
+    if (!tierData || G.player.bank < tierData.cost) return false;
     G.player.bank -= tierData.cost;
-    G.player.ownedShips = [{ tier: tierData.tier, hp: tierData.hp }];
-    G.player.activeShipIdx = 0;
+    G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
+    G.player.activeShipIdx = G.player.ownedShips.length - 1;
     G.savePlayer();
+    return true;
+  };
+
+  window.upgradeShip = function (tier) {
+    if (!G.purchaseShip(tier)) return;
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
     if (G.renderShipButton) G.renderShipButton();
     G.renderDock();
@@ -929,12 +1220,7 @@
   };
 
   window.buyShip = function (tier) {
-    var tierData = G.getShipTier(tier);
-    if (!tierData || G.player.bank < tierData.cost) return;
-    G.player.bank -= tierData.cost;
-    G.player.ownedShips = [{ tier: tierData.tier, hp: tierData.hp }];
-    G.player.activeShipIdx = 0;
-    G.savePlayer();
+    if (!G.purchaseShip(tier)) return;
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
     if (G.renderShipButton) G.renderShipButton();
     G.renderTacticalCrewBar();
@@ -958,11 +1244,27 @@
 
     var playerShip = G.getActivePlayerShip();
     var html = '';
+    var cargoValue = G.activeShip ? G.activeShip.cargoValue : (playerShip ? playerShip.tierData.cargoValue : 0);
+    var cargoCapacity = playerShip ? _getCargoCapacityBarrels(playerShip.tierData) : 0;
+    var cargoCapacityText = playerShip ? _formatBarrels(cargoCapacity) : 'No ship';
 
     if (!stage) {
       // At port, no voyage started
       html += '<h3>At Port</h3>';
       html += '<div class="stage-subtitle">Persian Gulf</div>';
+      if (playerShip) {
+        var loadedPct = Math.round(G.voyage.oilPct || 0);
+        var loadedBarrels = cargoCapacity * loadedPct / 100;
+        var fullLoadCost = G.getCargoPurchaseCost(playerShip.tierData);
+        html += _buildCargoSummary({
+          priceText: '$' + G.getCurrentBuyPrice() + '/bbl',
+          transferLabel: 'Loaded',
+          transferText: _formatBarrels(loadedBarrels) + ' / ' + cargoCapacityText,
+          totalLabel: 'Full load cost',
+          totalText: G.formatMoney(fullLoadCost)
+        });
+      }
+
       if (!playerShip) {
         // No ship — show buy options
         html += '<div class="stage-detail" style="color:var(--dock-text-muted)">You need a ship to set sail.</div>';
@@ -977,28 +1279,43 @@
           html += '</div>';
         }
       } else {
-        html += _buildPortActions(playerShip, 'loadCargoAndSail()', 'Load & Set Sail');
-        html += _buildShipUpgrades(playerShip);
+        var cargoAffordable = G.getAffordableLoadRatio(playerShip.tierData) > 0;
+        html += _buildPortActions(playerShip, 'loadCargoAndSail()', v.loading ? 'Loading cargo…' : 'Load & Set Sail', v.loading || !cargoAffordable);
+        html += _buildShipUpgrades(playerShip, v.loading);
       }
     } else if (stage.id === 'manage_port') {
       html += '<h3>In Port — ' + (v.port || '') + '</h3>';
-      if (v.selling === 'done') {
-        // Selling complete — show total, then auto-advance
-        html += '<div class="stage-detail">Sold cargo for <strong style="color:var(--dock-green)">' + G.formatMoney(G.roundScore) + '</strong></div>';
-        html += '<div class="stage-auto-label">Returning home…</div>';
-      } else if (v.selling) {
-        // Selling in progress
-        var sellVal = G.activeShip ? G.activeShip.cargoValue : 0;
+      if (playerShip) {
+        var saleStartPct = Math.max(0, Math.min(100, Math.round(v.saleStartPct || 0)));
         var oilLeft = Math.round(G.voyage.oilPct || 0);
-        html += '<div class="stage-auto-label">Selling cargo…</div>';
-        var sold = Math.round(sellVal * (100 - oilLeft) / 100);
-        html += '<div class="stage-detail" style="color:var(--dock-green)">+' + G.formatMoney(sold) + '</div>';
-      } else {
-        // Arrived — show Sell & Return button + repair
-        var cargoVal = G.activeShip ? G.activeShip.cargoValue : 0;
-        html += '<div class="stage-detail">Cargo: <strong>' + G.formatMoney(cargoVal) + '</strong> crude oil</div>';
-        html += _buildPortActions(playerShip, 'sellAndReturn()', 'Sell & Return');
+        var soldPct = Math.max(0, saleStartPct - oilLeft);
+        var loadedBarrels = cargoCapacity * saleStartPct / 100;
+        var soldBarrels = cargoCapacity * soldPct / 100;
+        var totalSaleValue = v.saleValue || G.getCargoSaleValue(playerShip.tierData);
+        var soldValue = saleStartPct > 0 ? Math.round(totalSaleValue * (soldPct / saleStartPct)) : 0;
+        var totalPurchaseCost = Math.round(v.cargoCost || 0);
+        var purchaseCost = saleStartPct > 0 ? Math.round(totalPurchaseCost * (soldPct / saleStartPct)) : 0;
+        var profit = soldValue - purchaseCost;
+        html += _buildCargoSummary({
+          priceText: '$' + G.getCurrentSellPrice() + '/bbl',
+          transferLabel: 'Sold',
+          transferText: _formatBarrels(soldBarrels) + ' / ' + _formatBarrels(loadedBarrels),
+          totalLabel: 'Revenue',
+          totalText: G.formatMoney(soldValue),
+          totalClass: '',
+          extraRows: [
+            { label: 'Purchase cost', text: G.formatMoney(purchaseCost), className: 'cost' },
+            { label: 'Profit', text: G.formatMoney(profit), className: profit >= 0 ? 'positive' : 'negative' }
+          ]
+        });
       }
+
+      var saleStatus = '&nbsp;';
+      if (v.selling) {
+        saleStatus = 'Selling cargo…';
+      }
+      html += '<div class="stage-auto-label">' + saleStatus + '</div>';
+      html += _buildPortActions(playerShip, 'continueVoyage()', 'Sail Home', v.selling !== 'done');
     } else if (stage.auto) {
       // Auto stage — just show what's happening
       html += '<div class="stage-auto-label">' + stage.label + '…</div>';
@@ -1008,12 +1325,26 @@
     card.classList.add('active');
   };
 
-  function _getRepairCost(playerShip) {
+  G.getRepairCost = function (playerShip) {
     var missing = playerShip.maxHp - playerShip.hp;
     // 10% of ship cost per HP point
     var costPerHp = Math.round(playerShip.tierData.cost * 0.1);
     return missing * costPerHp;
-  }
+  };
+
+  G.syncTransitHpToActiveShip = function () {
+    var playerShip = G.getActivePlayerShip();
+    if (!playerShip) return;
+    if (typeof G.transit.hp !== 'number') return;
+    playerShip.owned.hp = Math.max(0, Math.min(playerShip.maxHp, G.transit.hp));
+  };
+
+  G.syncActiveShipHpToTransit = function () {
+    var playerShip = G.getActivePlayerShip();
+    if (!playerShip) return;
+    G.transit.hp = playerShip.owned.hp;
+    G.transit.maxHp = playerShip.maxHp;
+  };
 
   window.continueVoyage = function () {
     if (G.voyage && G.voyage.stages[G.voyage.stageIdx] &&
@@ -1025,10 +1356,11 @@
   window.repairShip = function () {
     var playerShip = G.getActivePlayerShip();
     if (!playerShip || playerShip.hp >= playerShip.maxHp) return;
-    var cost = _getRepairCost(playerShip);
+    var cost = G.getRepairCost(playerShip);
     if (G.player.bank < cost) return;
     G.player.bank -= cost;
     playerShip.owned.hp = playerShip.maxHp;
+    G.syncActiveShipHpToTransit();
     G.savePlayer();
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
     if (G.renderShipButton) G.renderShipButton();
@@ -1036,39 +1368,83 @@
     G.updateMapStageCard();
   };
 
-  // --- Dynamic crew action text ---
-  function _getCrewAction(role) {
+  function _getRoleReloadState(role) {
+    if ((G.state !== 'TRANSIT_FORWARD' && G.state !== 'TRANSIT_RETURN') || !G.transit) return null;
+    if (role === 'Shotgunner') {
+      var elapsedSinceShot = G.transit.elapsed - G.transit.lastShotTime;
+      var cooldown = G.transit.shotgunCooldown || 1.5;
+      if (elapsedSinceShot < cooldown) {
+        return { label: 'Reloading', className: 'reloading' };
+      }
+    }
+    return null;
+  }
+
+  G.getCrewActionState = function (role) {
+    var member = G.getCrewForRole ? G.getCrewForRole(role) : null;
+    if (member && member.alive === false) {
+      return { label: 'Dead', className: 'dead' };
+    }
+
+    var reload = _getRoleReloadState(role);
+    if (reload) return reload;
+
     if (G.state === 'AUTO_STAGE') {
-      if (role === 'Captain') return 'Sailing';
-      return '';
+      if (role === 'Captain') return { label: 'Sailing' };
+      return { label: '' };
     }
     if (G.state === 'MINESWEEPER') {
-      if (role === 'Swimmer') return 'Sweeping';
-      if (role === 'Captain') return 'At helm';
-      return '';
+      if (role === 'Swimmer') return { label: 'In the water', className: 'deployed' };
+      if (role === 'Captain') return { label: 'At helm' };
+      return { label: '' };
     }
     if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {
       if (role === 'Captain') {
         var t = G.transit;
-        if (t.shipSpeedTarget > 0) return '▲ Forward';
-        if (t.shipSpeedTarget < 0) return '▼ Reverse';
-        return '⏸ Holding';
+        if (t.shipSpeedTarget > 0) return { label: '▲ Forward' };
+        if (t.shipSpeedTarget < 0) return { label: '▼ Reverse' };
+        return { label: '⏸ Holding' };
       }
-      if (role === 'Shotgunner') return 'On deck';
-      if (role === 'Gunner') return 'Scanning';
-      if (role === 'Navigator') return 'Plotting';
-      return '';
+      if (role === 'Shotgunner') return { label: 'Ready' };
+      if (role === 'Gunner') return { label: 'Scanning' };
+      if (role === 'Navigator') return { label: 'Plotting' };
+      return { label: '' };
     }
-    return '';
+    return { label: '' };
+  };
+
+  function _renderCrewActionContent(actionEl, role) {
+    if (!actionEl) return;
+    var state = G.getCrewActionState(role);
+    var label = state && state.label ? state.label : '';
+    actionEl.textContent = label || '';
+    actionEl.className = 'crew-slot-action' + (state && state.className ? ' ' + state.className : '');
   }
 
-  // --- Update captain action text without full re-render ---
-  G.updateCaptainAction = function () {
-    var actionEl = document.querySelector('.crew-slot[data-role="Captain"] .crew-slot-action');
+  G.updateCrewAction = function (role) {
+    var actionEl = document.querySelector('.crew-slot[data-role="' + role + '"] .crew-slot-action');
     if (actionEl) {
-      actionEl.textContent = _getCrewAction('Captain');
+      _renderCrewActionContent(actionEl, role);
     }
   };
+
+  G.updateCaptainAction = function () {
+    G.updateCrewAction('Captain');
+  };
+
+  G.updateCrewActions = function () {
+    var container = document.getElementById('tacticalCrewSlots');
+    if (!container) return;
+    var slots = container.querySelectorAll('.crew-slot[data-role]');
+    for (var i = 0; i < slots.length; i++) {
+      G.updateCrewAction(slots[i].getAttribute('data-role'));
+    }
+  };
+
+  function _getCrewSlotHeaderLabel(role) {
+    if (role === 'Shotgunner') return 'Shotgun';
+    return role;
+  }
 
   // --- Unified crew bar (all states) ---
   G.renderTacticalCrewBar = function () {
@@ -1079,6 +1455,9 @@
     if (!G.player || !G.player.crew) return;
 
     var isMenu = (G.state === 'MENU');
+    var isPortHover = isMenu || (G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0 &&
+      G.voyage.stages[G.voyage.stageIdx] &&
+      G.voyage.stages[G.voyage.stageIdx].id === 'manage_port');
 
     var playerShip = G.getActivePlayerShip();
     if (!playerShip) return;
@@ -1094,12 +1473,6 @@
         if (member) {
           // Portrait
           var card = _buildCrewCard(member, isMenu);
-          if (isMenu) {
-            card.onclick = function (e) {
-              e.stopPropagation();
-              G.showCrewPopover(member, role, card);
-            };
-          }
           slotEl.appendChild(card);
 
           // Text info beside portrait
@@ -1111,7 +1484,7 @@
 
           var header = document.createElement('div');
           header.className = 'crew-slot-header';
-          header.textContent = role.toUpperCase();
+          header.textContent = _getCrewSlotHeaderLabel(role).toUpperCase();
           topGroup.appendChild(header);
 
           var nameEl = document.createElement('div');
@@ -1122,22 +1495,24 @@
           info.appendChild(topGroup);
 
           // Dynamic action text (only during gameplay)
-          var action = _getCrewAction(role);
           var actionEl = document.createElement('div');
           actionEl.className = 'crew-slot-action';
-          actionEl.textContent = action || '';
+          _renderCrewActionContent(actionEl, role);
           info.appendChild(actionEl);
 
           slotEl.appendChild(info);
-        } else if (isMenu) {
+
+          slotEl.addEventListener('mouseenter', function () {
+            G.showCrewPopover(member, role, slotEl, { dismissible: isPortHover });
+          });
+          slotEl.addEventListener('mouseleave', function () {
+            if (G.hideCrewPopoverSoon) G.hideCrewPopoverSoon();
+          });
+        } else {
           // Empty hire slot — same structure as filled to prevent layout shift
           var empty = document.createElement('div');
           empty.className = 'crew-slot-empty';
           empty.textContent = 'HIRE';
-          empty.onclick = function (e) {
-            e.stopPropagation();
-            G.showHireModal(role);
-          };
           slotEl.appendChild(empty);
 
           var emptyInfo = document.createElement('div');
@@ -1146,15 +1521,32 @@
           emptyTop.className = 'crew-slot-top';
           var emptyHeader = document.createElement('div');
           emptyHeader.className = 'crew-slot-header';
-          emptyHeader.textContent = role.toUpperCase();
+          emptyHeader.textContent = _getCrewSlotHeaderLabel(role).toUpperCase();
           emptyTop.appendChild(emptyHeader);
+          var emptyName = document.createElement('div');
+          emptyName.className = 'crew-slot-name';
+          emptyName.innerHTML = '&nbsp;';
+          emptyTop.appendChild(emptyName);
           emptyInfo.appendChild(emptyTop);
           // Spacer for action line to match filled slot height
           var emptySpacer = document.createElement('div');
           emptySpacer.className = 'crew-slot-action';
-          emptySpacer.innerHTML = '&nbsp;';
+          _renderCrewActionContent(emptySpacer, role);
           emptyInfo.appendChild(emptySpacer);
           slotEl.appendChild(emptyInfo);
+
+          slotEl.addEventListener('mouseenter', function () {
+            G.showCrewPopover(null, role, slotEl, { dismissible: false });
+          });
+          slotEl.addEventListener('mouseleave', function () {
+            if (G.hideCrewPopoverSoon) G.hideCrewPopoverSoon();
+          });
+          if (isPortHover) {
+            slotEl.addEventListener('click', function (e) {
+              e.stopPropagation();
+              G.showHireModal(role);
+            });
+          }
         }
 
         container.appendChild(slotEl);
@@ -1167,9 +1559,8 @@
     var classes = 'crew-card';
     if (clickable) classes += ' clickable';
     if (member.alive === false) classes += ' crew-dead';
+    if (G.state === 'MINESWEEPER' && member.role === 'Swimmer' && member.alive !== false) classes += ' crew-deployed';
     card.className = classes;
-    card.title = member.name + ' — ' + member.quirkLabel + ' (' + member.role + ')';
-
     var portrait = document.createElement('div');
     portrait.className = 'crew-card-portrait';
     portrait.style.backgroundImage = 'url(' + G.getPortraitSrc(member.charId) + ')';
@@ -1179,22 +1570,6 @@
   }
 
   // --- Tactical menu ---
-  G.toggleTacticalMenu = function () {
-    var menu = document.getElementById('tacticalMenu');
-    menu.classList.toggle('active');
-  };
-  G.closeTacticalMenu = function () {
-    var menu = document.getElementById('tacticalMenu');
-    menu.classList.remove('active');
-  };
-
-  document.addEventListener('click', function (e) {
-    var menu = document.getElementById('tacticalMenu');
-    if (menu && menu.classList.contains('active') && !e.target.closest('.tactical-menu-wrap')) {
-      menu.classList.remove('active');
-    }
-  });
-
   // Expose for HTML onclick
   window.newGame = G.newGame;
   window.showHelp = G.showHelp;
@@ -1205,8 +1580,6 @@
   window.continueGame = function () { G.continueGame(); };
   window.toggleMute = function () { G.toggleMute(); };
   window.transitControl = function (a) { G.transitControl(a); };
-  window.toggleTacticalMenu = function () { G.toggleTacticalMenu(); };
-  window.closeTacticalMenu = function () { G.closeTacticalMenu(); };
   window.onShipwreckContinue = function () { G.onShipwreckContinue(); };
   window.onRetreatToPort = function () { G.onRetreatToPort(); };
   window.onRetreatContinue = function () { G.onRetreatContinue(); };

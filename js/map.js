@@ -2,15 +2,15 @@
 (function () {
   const G = (window.Game = window.Game || {});
 
-  // Grid dimensions scale with difficulty (turn count).
-  // Starts small (bigger tiles, easier) and grows to max over ~10 turns.
-  // CELL (pixel size per tile) is computed at runtime to fill the viewport.
+  // Grid dimensions are driven by authored campaign/map tiers rather than
+  // week-by-week time passing. Keep the on-screen board stable unless an
+  // explicit map escalation beat changes the framing.
   G.MIN_GRID_COLS = 35;
   G.MAX_GRID_COLS = 45;
   G.GRID_RATIO = 5 / 3; // cols / rows ≈ 1.667, matches map aspect ratio
 
-  G.getGridSize = function (turn) {
-    var t = Math.min(turn || 0, 10);
+  G.getGridSize = function (tier) {
+    var t = Math.min(tier || 0, 10);
     var cols = Math.round(G.MIN_GRID_COLS + (G.MAX_GRID_COLS - G.MIN_GRID_COLS) * (t / 10));
     var rows = Math.round(cols / G.GRID_RATIO);
     return { cols: cols, rows: rows };
@@ -39,6 +39,35 @@
   G.cols = 0;
   G.rows = 0;
   G.oceanMask = null;
+
+  function getEntrySeedCells(canUseCell, direction, exactOnly) {
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { entryCol: 0 };
+    var seeds = [];
+    if (G.findEntryFootholdCenter) {
+      var center = G.findEntryFootholdCenter(direction);
+      if (center) {
+        if (exactOnly) {
+          if (G.oceanMask[center[0]][center[1]] && canUseCell(center[0], center[1])) {
+            seeds.push([center[0], center[1]]);
+          }
+        } else {
+          for (var dr = -1; dr <= 1; dr++) {
+            var nr = center[0] + dr, nc = center[1];
+            if (nr >= 0 && nr < G.rows && nc >= 0 && nc < G.cols &&
+                G.oceanMask[nr][nc] && canUseCell(nr, nc)) {
+              seeds.push([nr, nc]);
+            }
+          }
+        }
+      }
+    }
+    if (seeds.length) return seeds;
+
+    for (var r = 0; r < G.rows; r++) {
+      if (G.oceanMask[r][edges.entryCol] && canUseCell(r, edges.entryCol)) seeds.push([r, edges.entryCol]);
+    }
+    return seeds;
+  }
 
   // Build the ocean mask by sampling alpha from hormuz-land.png.
   // Where land is transparent (alpha < 128) = ocean cell.
@@ -75,17 +104,18 @@
   // Check if a mine-free path exists from left to right through ocean
   G.hasPath = function (mines) {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { exitCol: cols - 1 };
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const queue = [];
-    for (let r = 0; r < rows; r++) {
-      if (oceanMask[r][0] && !mines[r][0]) {
-        queue.push([r, 0]);
-        visited[r][0] = true;
-      }
+    const seeds = getEntrySeedCells(function (r, c) { return !mines[r][c]; }, null, true);
+    for (let i = 0; i < seeds.length; i++) {
+      const r = seeds[i][0], c = seeds[i][1];
+      queue.push([r, c]);
+      visited[r][c] = true;
     }
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === cols - 1) return true;
+      if (c === edges.exitCol) return true;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           if (dr === 0 && dc === 0) continue;
@@ -104,18 +134,19 @@
   // BFS through all ocean to find a carveable path (ignoring mines)
   G.findCarvePath = function () {
     const rows = G.rows, cols = G.cols;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { exitCol: cols - 1 };
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
     const queue = [];
-    for (let r = 0; r < rows; r++) {
-      if (G.oceanMask[r][0]) {
-        queue.push([r, 0]);
-        visited[r][0] = true;
-      }
+    const seeds = getEntrySeedCells(function () { return true; }, null, true);
+    for (let i = 0; i < seeds.length; i++) {
+      const r = seeds[i][0], c = seeds[i][1];
+      queue.push([r, c]);
+      visited[r][c] = true;
     }
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === cols - 1) {
+      if (c === edges.exitCol) {
         const path = [];
         let cur = [r, c];
         while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
@@ -178,8 +209,9 @@
 
   // Find revealed path from left to right that maximizes distance from coast.
   // Uses Dijkstra with cost = 1 / (distFromLand + 1), so cells far from land are cheaper.
-  G.findRevealedPath = function (revealed) {
+  G.findRevealedPath = function (revealed, direction) {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { exitCol: cols - 1 };
     if (!G.distanceMap) G.buildDistanceMap();
     const dm = G.distanceMap;
 
@@ -218,18 +250,18 @@
       return top;
     }
 
-    for (let r = 0; r < rows; r++) {
-      if (oceanMask[r][0] && revealed[r][0]) {
-        var c0 = 1 / (Math.max(1, dm[r][0]) + 1);
-        cost[r][0] = c0;
-        heapPush(c0, r, 0);
-      }
+    const seeds = getEntrySeedCells(function (r, c) { return !!revealed[r][c]; }, direction, true);
+    for (let i = 0; i < seeds.length; i++) {
+      const r = seeds[i][0], c = seeds[i][1];
+      var c0 = 1 / (Math.max(1, dm[r][c]) + 1);
+      cost[r][c] = c0;
+      heapPush(c0, r, c);
     }
 
     while (heap.length > 0) {
       const [d, r, c] = heapPop();
       if (d > cost[r][c]) continue; // stale entry
-      if (c === cols - 1) {
+      if (c === edges.exitCol) {
         const path = [];
         let cur = [r, c];
         while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
