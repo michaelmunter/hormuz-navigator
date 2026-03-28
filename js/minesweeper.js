@@ -7,6 +7,7 @@
   const ENTRY_MAX_INFO_REVEALS = 2;
   const ENTRY_OPENING_ATTEMPTS = 10;
   const ENTRY_MIN_SAFE_PROBES = 2;
+  const ENTRY_MIN_SAFE_EXPANSION = 4;
   const ENTRY_FOOTHOLD_PROFILES = [
     {
       rowDepths: { '-1': 2, '0': 2, '1': 2 },
@@ -681,6 +682,103 @@
     return safeProbes;
   }
 
+  function getDeterministicSafeProbesForState(ms, revealedState, flaggedState) {
+    var safeMap = Array.from({ length: G.rows }, function () {
+      return Array(G.cols).fill(false);
+    });
+
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (revealedState[r][c] !== true || ms.mines[r][c] || ms.grid[r][c] < 0) continue;
+        var hidden = [];
+        var flagged = 0;
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            var nr = r + dr;
+            var nc = c + dc;
+            if (nr < 0 || nr >= G.rows || nc < 0 || nc >= G.cols) continue;
+            if (!G.oceanMask[nr][nc]) continue;
+            if (flaggedState[nr][nc]) flagged++;
+            else if (!revealedState[nr][nc]) hidden.push([nr, nc]);
+          }
+        }
+        if (!hidden.length) continue;
+        if (ms.grid[r][c] === flagged) {
+          for (var i = 0; i < hidden.length; i++) {
+            safeMap[hidden[i][0]][hidden[i][1]] = true;
+          }
+        }
+      }
+    }
+
+    var probes = [];
+    for (var rr = 0; rr < G.rows; rr++) {
+      for (var cc = 0; cc < G.cols; cc++) {
+        if (!safeMap[rr][cc]) continue;
+        for (var dr2 = -1; dr2 <= 1; dr2++) {
+          for (var dc2 = -1; dc2 <= 1; dc2++) {
+            if (dr2 === 0 && dc2 === 0) continue;
+            var ar = rr + dr2;
+            var ac = cc + dc2;
+            if (ar >= 0 && ar < G.rows && ac >= 0 && ac < G.cols && revealedState[ar][ac] === true) {
+              probes.push([rr, cc]);
+              dr2 = 2;
+              break;
+            }
+          }
+        }
+      }
+    }
+    return probes;
+  }
+
+  function simulateDeterministicStarterExpansion(ms) {
+    var revealedState = Array.from({ length: G.rows }, function (_, r) {
+      return ms.revealed[r].slice();
+    });
+    var flaggedState = Array.from({ length: G.rows }, function (_, r) {
+      return ms.flagged[r].slice();
+    });
+    var initialRevealed = 0;
+    var totalRevealed = 0;
+
+    function revealSimulated(r, c) {
+      if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) return;
+      if (!G.oceanMask[r][c] || revealedState[r][c] || flaggedState[r][c]) return;
+      revealedState[r][c] = true;
+      totalRevealed++;
+      if (ms.grid[r][c] === 0 && !ms.mines[r][c]) {
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            revealSimulated(r + dr, c + dc);
+          }
+        }
+      }
+    }
+
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (revealedState[r][c] === true) initialRevealed++;
+      }
+    }
+    totalRevealed = initialRevealed;
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      var probes = getDeterministicSafeProbesForState(ms, revealedState, flaggedState);
+      for (var i = 0; i < probes.length; i++) {
+        var before = totalRevealed;
+        revealSimulated(probes[i][0], probes[i][1]);
+        if (totalRevealed > before) changed = true;
+      }
+    }
+
+    return totalRevealed - initialRevealed;
+  }
+
   function hasImmediateSafeFrontierProbe(ms) {
     return getDeterministicStarterSafeProbes(ms).length > 0;
   }
@@ -761,7 +859,9 @@
 
   G.isStarterOpeningAcceptable = function (ms) {
     if (!ms || !G.findEntryFootholdCenter()) return false;
-    return getDeterministicStarterSafeProbes(ms).length >= ENTRY_MIN_SAFE_PROBES && !hasInitialDeterministicMineFlag(ms);
+    return getDeterministicStarterSafeProbes(ms).length >= ENTRY_MIN_SAFE_PROBES &&
+      simulateDeterministicStarterExpansion(ms) >= ENTRY_MIN_SAFE_EXPANSION &&
+      !hasInitialDeterministicMineFlag(ms);
   };
 
   G.canProbeCell = function (r, c) {
