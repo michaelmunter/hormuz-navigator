@@ -492,32 +492,64 @@
 
       /* ── Map stage card (centered overlay on map) ── */
       .map-stage-card {
+        --card-space: 18px;
         display: none;
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(245, 235, 220, 0.96);
-        border: 1px solid rgba(180,150,110,0.4);
-        border-radius: 10px;
-        padding: 22px 32px;
-        text-align: center;
+        padding: 0;
+        text-align: left;
         z-index: 5;
         min-width: 240px;
-        max-width: 340px;
-        box-shadow: 0 6px 28px rgba(0,0,0,0.25);
+        max-width: 560px;
         color: #3a2e1c;
       }
       .map-stage-card.active { display: block; }
+      .map-stage-card-inner {
+        background: rgba(245, 235, 220, 0.96);
+        border: 1px solid rgba(180,150,110,0.4);
+        border-radius: 10px;
+        padding: var(--card-space);
+        box-shadow: 0 6px 28px rgba(0,0,0,0.25);
+      }
+      .map-stage-card.compact-layout {
+        max-width: none;
+      }
+      .map-stage-card.compact-layout .map-stage-card-inner {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        padding: var(--card-space);
+      }
       .map-stage-card h3 {
         font-size: 15px;
         font-weight: 700;
-        margin: 0 0 4px;
+        margin: 0;
+        text-align: left;
+      }
+      .map-stage-card .port-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: var(--card-space);
+      }
+      .map-stage-card .stage-date {
+        font-size: 11px;
+        color: #9b8b74;
+        white-space: nowrap;
+        text-align: right;
       }
       .map-stage-card .stage-subtitle {
-        font-size: 12px;
-        color: #7a6b55;
-        margin-bottom: 10px;
+        font-weight: 600;
+        color: #6f5f49;
+        text-transform: uppercase;
+        letter-spacing: 0.75px;
+        font-size: 10px;
+        margin-bottom: calc(var(--card-space) * 0.6);
+        text-align: left;
       }
       .map-stage-card .stage-detail {
         font-size: 13px;
@@ -529,8 +561,8 @@
         color: #2a8a3e;
       }
       .map-stage-card .cargo-summary {
-        margin: 12px 0 14px;
-        padding: 10px 12px;
+        margin: var(--card-space) 0;
+        padding: var(--card-space);
         border: 1px solid rgba(180,150,110,0.28);
         border-radius: 8px;
         background: rgba(255,255,255,0.45);
@@ -542,7 +574,7 @@
         letter-spacing: 0.8px;
         color: #7a6b55;
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-bottom: var(--card-space);
       }
       .map-stage-card .cargo-summary-row {
         display: flex;
@@ -574,25 +606,57 @@
         color: #9b8b74;
         font-weight: 500;
       }
-      .map-stage-card .stage-actions {
+      .map-stage-card .port-bulletin-list {
         display: flex;
-        gap: 8px;
-        justify-content: center;
-        margin-top: 12px;
-        flex-wrap: wrap;
+        flex-direction: column;
+        gap: calc(var(--card-space) * 0.6);
+        margin: 0 0 var(--card-space);
+        text-align: left;
+      }
+      .map-stage-card .port-bulletin-item {
+        position: relative;
+        padding-left: var(--card-space);
+        font-size: 11px;
+        line-height: 1.45;
+        color: #4a3b25;
+        max-width: 100%;
+      }
+      .map-stage-card .port-bulletin-item::before {
+        content: '';
+        position: absolute;
+        left: calc((var(--card-space) - 6px) / 2);
+        top: 0.62em;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(194,121,26,0.5);
+      }
+      .map-stage-card .stage-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: stretch;
+        gap: var(--card-space);
+        margin-top: var(--card-space);
+      }
+      .map-stage-card .stage-secondary-actions {
+        display: flex;
+        align-items: stretch;
+        gap: var(--card-space);
       }
       .map-stage-card .stage-sail-btn {
         border: none;
         border-radius: 6px;
         background: #c2791a;
         color: #fff;
-        padding: 8px 28px;
-        min-width: 172px;
+        padding: 0 14px;
+        min-width: 0;
         font-size: 14px;
         font-weight: 700;
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
+        height: 36px;
+        white-space: nowrap;
       }
       .map-stage-card .stage-sail-btn:hover { background: #d4922e; }
       .map-stage-card .stage-sail-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
@@ -606,7 +670,9 @@
         border-radius: 6px;
         background: rgba(210,185,145,0.5);
         color: #3a2e1c;
-        padding: 8px 18px;
+        padding: 0 10px;
+        min-width: 96px;
+        height: 36px;
         font-size: 12px;
         cursor: pointer;
         font-family: inherit;
@@ -617,6 +683,48 @@
         opacity: 0.35;
         cursor: not-allowed;
         pointer-events: none;
+      }
+      .map-stage-card .stage-ship-btn {
+        border: 1px solid rgba(180,150,110,0.4);
+        border-radius: 6px;
+        background: rgba(210,185,145,0.5);
+        color: #3a2e1c;
+        padding: 0 10px;
+        min-width: 84px;
+        height: 36px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background 0.15s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .map-stage-card .stage-ship-spacer {
+        min-width: 84px;
+        height: 36px;
+        visibility: hidden;
+      }
+      .map-stage-card .stage-ship-btn:hover { background: rgba(210,185,145,0.7); }
+      .map-stage-card .stage-ship-btn.disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      .map-stage-card .stage-ship-btn-icon {
+        width: 14px;
+        height: 14px;
+        background-color: currentColor;
+        mask-image: url('various/ship.svg');
+        -webkit-mask-image: url('various/ship.svg');
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        transform: scaleX(-1);
       }
       .map-stage-card .stage-retire-link {
         display: block;
@@ -634,6 +742,14 @@
         color: #7a6b55;
         font-style: italic;
         min-height: 18px;
+      }
+      .map-stage-card .stage-upgrade-panel {
+        margin-top: var(--card-space);
+      }
+      .map-stage-card.compact-layout .stage-auto-label {
+        margin: 0;
+        white-space: nowrap;
+        text-align: center;
       }
 
       /* ── Crew action text ── */
@@ -832,6 +948,7 @@
         color: var(--dock-text-muted);
         align-self: flex-end;
         margin-top: 2px;
+        white-space: nowrap;
       }
       .menu-actions {
         display: flex;
@@ -859,7 +976,7 @@
         flex-direction: row;
         align-items: stretch;
         gap: 8px;
-        width: 120px;
+        width: 124px;
         flex-shrink: 0;
         position: relative;
         padding: 4px 5px 4px 3px;
@@ -1111,6 +1228,7 @@
       }
       .hire-candidates { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
       .hire-card {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 10px;
@@ -1123,6 +1241,10 @@
       }
       .hire-card:hover { border-color: var(--dock-accent); background: rgba(255,255,255,0.6); }
       .hire-card.disabled { opacity: 0.4; cursor: not-allowed; }
+      .hire-portrait-wrap {
+        position: relative;
+        flex-shrink: 0;
+      }
       .hire-portrait {
         width: 56px;
         height: 75px;
@@ -1133,11 +1255,39 @@
         border: 1px solid var(--dock-border);
         flex-shrink: 0;
       }
-      .hire-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+      .hire-recurring-badge-wrap {
+        position: absolute;
+        top: 50%;
+        right: 20px;
+        transform: translateY(-50%);
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hire-recurring-badge {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        color: rgba(120,120,120,0.62);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1;
+        transform: translateY(-2px);
+      }
+      .hire-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 3px; }
+      .hire-name-row {
+        display: flex;
+        align-items: center;
+      }
       .hire-name { font-size: 14px; font-weight: 600; color: var(--dock-text); }
       .hire-quirk { font-size: 11px; color: var(--dock-text-muted); font-style: italic; }
       .hire-quirk small { color: var(--dock-text-muted); }
-      .hire-cost { font-size: 12px; font-weight: 600; color: var(--dock-green); margin-top: 2px; }
+      .hire-cost { font-size: 12px; font-weight: 600; color: var(--dock-green); margin-top: 4px; }
       .hire-modal-actions {
         display: flex;
         gap: 8px;
@@ -1147,19 +1297,11 @@
         min-height: 34px;
         line-height: 1;
       }
-      .hire-modal-actions .dock-btn.intern-btn {
-        border-color: var(--dock-accent);
-        background: var(--dock-accent);
-        color: #fff;
-      }
-      .hire-modal-actions .dock-btn.intern-btn:hover {
-        background: var(--dock-accent-hover);
-      }
       .hire-modal .dock-btn {
         font-size: 12px;
         padding: 0 12px;
       }
-      .hire-modal-actions .dock-btn:not(.intern-btn) {
+      .hire-modal-actions .dock-btn {
         font-weight: 600;
       }
 
@@ -1309,7 +1451,6 @@
         <h3 id="hireModalTitle">Hire Crew</h3>
         <div class="hire-candidates" id="hireCandidateList"></div>
         <div class="hire-modal-actions">
-          <button class="dock-btn intern-btn" onclick="hireIntern()">Get Intern</button>
           <button class="dock-btn" onclick="closeHireModal()">Cancel</button>
         </div>
       </div>

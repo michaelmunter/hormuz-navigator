@@ -36,11 +36,14 @@
     ]
   };
 
+  function getNewsPoolForTurn(turn) {
+    if (turn < 3) return NEWS_POOL.early;
+    if (turn < 7) return NEWS_POOL.mid;
+    return NEWS_POOL.late;
+  }
+
   G.getNewsHeadlines = function (turn) {
-    var pool;
-    if (turn < 3) pool = NEWS_POOL.early;
-    else if (turn < 7) pool = NEWS_POOL.mid;
-    else pool = NEWS_POOL.late;
+    var pool = getNewsPoolForTurn(turn);
     var shuffled = pool.slice().sort(function (a, b) {
       var ha = hashStr(a + turn), hb = hashStr(b + turn);
       return ha - hb;
@@ -50,6 +53,72 @@
       headlines.unshift(G.player.market.headline);
     }
     return headlines;
+  };
+
+  G.getVoyageHeadlineCount = function (days) {
+    var span = Math.max(1, Math.floor(days || 1));
+    return Math.max(1, Math.min(5, Math.ceil(span / 2)));
+  };
+
+  G.buildPortBulletin = function (options) {
+    options = options || {};
+    var startDay = Math.max(0, Math.floor(options.startDay || 0));
+    var days = Math.max(1, Math.floor(options.days || 1));
+    var turn = Math.max(0, Math.floor(options.turn || 0));
+    var pool = getNewsPoolForTurn(turn);
+    var itemCount = G.getVoyageHeadlineCount(days);
+    var reserveMarketSlot = options.marketHeadline ? 1 : 0;
+    var poolQuota = Math.max(0, itemCount - reserveMarketSlot);
+    var used = {};
+    var items = [];
+
+    for (var i = 0; i < poolQuota; i++) {
+      var dayOffset = Math.floor(((i + 0.5) * days) / poolQuota);
+      if (dayOffset >= days) dayOffset = days - 1;
+      var dayNumber = startDay + dayOffset + 1;
+      var ranked = pool.slice().sort(function (a, b) {
+        var ha = hashStr(a + '|' + turn + '|' + dayNumber);
+        var hb = hashStr(b + '|' + turn + '|' + dayNumber);
+        return ha - hb;
+      });
+      var text = ranked[0];
+      for (var j = 0; j < ranked.length; j++) {
+        if (!used[ranked[j]]) {
+          text = ranked[j];
+          break;
+        }
+      }
+      used[text] = true;
+      items.push({ day: dayNumber, text: text, order: 0 });
+    }
+
+    if (options.marketHeadline) {
+      items.push({
+        day: startDay + days,
+        text: options.marketHeadline,
+        order: 1
+      });
+    }
+
+    items.sort(function (a, b) {
+      if (a.day !== b.day) return a.day - b.day;
+      return a.order - b.order;
+    });
+
+    var normalizedItems = items.map(function (item) {
+      return {
+        day: item.day,
+        text: item.text
+      };
+    });
+
+    return {
+      title: options.title || 'Port Bulletin',
+      startDay: startDay,
+      endDay: startDay + days,
+      rangeLabel: G.formatCampaignDateRange(startDay + 1, startDay + days),
+      items: normalizedItems
+    };
   };
 
   function hashStr(s) {
@@ -72,7 +141,7 @@
   G.renderDock = function () {
     // Bank & day
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
-    document.getElementById('menuWeek').textContent = 'Day ' + G.player.turn;
+    G.updateDockDate();
 
     // Ensure starting crew exists
     G.ensureStartingCrew();
@@ -91,6 +160,12 @@
       document.addEventListener('click', closeShipOnOutside);
       shipOutsideListenerBound = true;
     }
+  };
+
+  G.updateDockDate = function () {
+    var label = document.getElementById('menuWeek');
+    if (!label || !G.player) return;
+    label.textContent = G.formatCampaignDate(G.getDisplayCalendarDay());
   };
 
   // --- Crew hover card ---
@@ -435,6 +510,58 @@
   }
 
   // --- Hire modal ---
+  function formatHireTrait(candidate) {
+    if (!candidate || candidate.quirkVal === undefined || candidate.quirkVal === null || candidate.quirkVal === '') {
+      return '';
+    }
+    return candidate.quirkVal < 1
+      ? Math.round(candidate.quirkVal * 100) + '%'
+      : candidate.quirkVal;
+  }
+
+  function buildHireCard(candidate, role, options) {
+    options = options || {};
+    var cost = G.getHireCost(candidate.id);
+    var canAfford = G.player.bank >= cost;
+    var card = document.createElement('div');
+    var classes = ['hire-card'];
+    if (!canAfford) classes.push('disabled');
+    if (options.isRecurring) classes.push('hire-card-recurring');
+    card.className = classes.join(' ');
+
+    var quirkHtml = candidate.quirkLabel;
+    if (candidate.quirkStat && formatHireTrait(candidate)) {
+      quirkHtml += ' <small>(' + candidate.quirkStat + ' +' + formatHireTrait(candidate) + ')</small>';
+    }
+
+    var recurringBadge = options.isRecurring
+      ? '<div class="hire-recurring-badge-wrap"><div class="hire-recurring-badge" aria-hidden="true">\u221e</div></div>'
+      : '';
+
+    card.innerHTML =
+      '<div class="hire-portrait-wrap">' +
+        '<div class="hire-portrait" style="background-image:url(' + G.getPortraitSrc(candidate.id) + ')"></div>' +
+      '</div>' +
+      '<div class="hire-info">' +
+        '<span class="hire-name-row"><span class="hire-name">' + candidate.name + '</span></span>' +
+        '<span class="hire-quirk">' + quirkHtml + '</span>' +
+        '<span class="hire-cost">' + G.formatMoney(cost) + '</span>' +
+      '</div>' +
+      recurringBadge;
+
+    if (canAfford) {
+      card.onclick = function () {
+        G.confirmHireForRole(candidate.id, role);
+        G.closeHireModal();
+        G.renderTacticalCrewBar();
+        updateSetSailBtn();
+        document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
+      };
+    }
+
+    return card;
+  }
+
   G.showHireModal = function (role) {
     var modal = document.getElementById('hireModal');
     var list = document.getElementById('hireCandidateList');
@@ -444,44 +571,12 @@
     document.getElementById('hireModalTitle').textContent = 'Hire ' + role;
 
     var candidates = G.getHireCandidates(3);
-    if (candidates.length === 0) {
-      list.innerHTML = '<div class="placeholder-text">No crew available for hire.</div>';
-      modal.classList.add('active');
-      return;
-    }
-
     for (var i = 0; i < candidates.length; i++) {
-      (function (c) {
-        var cost = G.getHireCost(c.id);
-        var canAfford = G.player.bank >= cost;
-
-        var card = document.createElement('div');
-        card.className = 'hire-card' + (canAfford ? '' : ' disabled');
-
-        card.innerHTML =
-          '<div class="hire-portrait" style="background-image:url(' + G.getPortraitSrc(c.id) + ')"></div>' +
-          '<div class="hire-info">' +
-            '<span class="hire-name">' + c.name + '</span>' +
-            '<span class="hire-quirk">' + c.quirkLabel +
-            ' <small>(' + c.quirkStat + ' +' +
-            (c.quirkVal < 1 ? Math.round(c.quirkVal * 100) + '%' : c.quirkVal) +
-            ')</small></span>' +
-            '<span class="hire-cost">' + G.formatMoney(cost) + '</span>' +
-          '</div>';
-
-        if (canAfford) {
-          card.onclick = function () {
-            G.confirmHireForRole(c.id, role);
-            G.closeHireModal();
-            G.renderTacticalCrewBar();
-            updateSetSailBtn();
-            document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
-          };
-        }
-
-        list.appendChild(card);
-      })(candidates[i]);
+      list.appendChild(buildHireCard(candidates[i], role));
     }
+
+    var intern = G.CHARACTER_POOL.find(function (c) { return c.id === G.INTERN_CHARACTER_ID; });
+    if (intern) list.appendChild(buildHireCard(intern, role, { isRecurring: true }));
 
     modal.classList.add('active');
   };
@@ -490,16 +585,6 @@
     document.getElementById('hireModal').classList.remove('active');
   };
   window.closeHireModal = function () { G.closeHireModal(); };
-  window.hireIntern = function () {
-    var modal = document.getElementById('hireModal');
-    var role = modal ? modal.getAttribute('data-role') : '';
-    if (!role) return;
-    if (!G.confirmHireForRole(10, role)) return;
-    G.closeHireModal();
-    G.renderTacticalCrewBar();
-    updateSetSailBtn();
-    document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
-  };
 
   // --- Set sail ---
   G.dockSetSail = function () {

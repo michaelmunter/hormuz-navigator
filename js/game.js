@@ -10,10 +10,24 @@
 
   // --- Player state & persistence ---
   var SAVE_KEY = 'hormuz_save';
-  var SAVE_VERSION = 8;
+  var SAVE_VERSION = 9;
   var STARTING_BANK = 1000000; // $1M — Rustbucket is free starter ship
   var MARKET_REFERENCE_PRICE = 82;
   var MARKET_CARGO_COST_SCALE = 0.09;
+  var CAMPAIGN_MONTHS = [
+    { name: 'June', shortName: 'Jun', days: 30 },
+    { name: 'July', shortName: 'Jul', days: 31 },
+    { name: 'August', shortName: 'Aug', days: 31 },
+    { name: 'September', shortName: 'Sep', days: 30 },
+    { name: 'October', shortName: 'Oct', days: 31 },
+    { name: 'November', shortName: 'Nov', days: 30 },
+    { name: 'December', shortName: 'Dec', days: 31 },
+    { name: 'January', shortName: 'Jan', days: 31 },
+    { name: 'February', shortName: 'Feb', days: 28 },
+    { name: 'March', shortName: 'Mar', days: 31 },
+    { name: 'April', shortName: 'Apr', days: 30 },
+    { name: 'May', shortName: 'May', days: 31 }
+  ];
 
   G.player = null;
 
@@ -22,6 +36,10 @@
       stageIdx: -1,
       port: '',
       stages: [],
+      departureDay: 0,
+      outboundDays: 0,
+      returnDays: 0,
+      portBulletin: null,
       timer: null,
       cargoLoaded: false,
       oilPct: 0,
@@ -47,9 +65,8 @@
 
   function _createMarketForTurn(turn, previousMarket) {
     var previousMid = previousMarket ? (previousMarket.buyPrice + previousMarket.sellPrice) / 2 : MARKET_REFERENCE_PRICE;
-    var drift = turn < 3 ? 1.5 : (turn < 7 ? 3.5 : 5.5);
     var noise = Math.round((Math.random() * 10) - 5);
-    var targetMid = Math.max(68, Math.round(previousMid + drift + noise));
+    var targetMid = Math.max(68, Math.round(previousMid + noise));
     var spreadBase = turn < 3 ? 14 : (turn < 7 ? 19 : 26);
     var spread = spreadBase + Math.floor(Math.random() * 5);
     var buyPrice = Math.max(58, targetMid - Math.floor(spread / 2));
@@ -69,14 +86,73 @@
       ownedShips: [{ tier: 1, hp: 1 }], // start with The Rustbucket
       activeShipIdx: 0,                  // index into ownedShips
       turn: 0,
+      calendarDay: 0,
       equipment: [],
       inRun: false,
       totalCrewDeaths: 0,
       conflictTier: 0,
-      market: market
+      market: market,
+      latestBulletin: null
     };
     if (G.ensureHireState) G.ensureHireState(player);
     return player;
+  };
+
+  G.getCampaignDateParts = function (calendarDay) {
+    var dayIndex = Math.max(0, Math.floor(calendarDay || 0));
+    var year = 1;
+    while (dayIndex >= 365) {
+      dayIndex -= 365;
+      year++;
+    }
+    for (var i = 0; i < CAMPAIGN_MONTHS.length; i++) {
+      if (dayIndex < CAMPAIGN_MONTHS[i].days) {
+        return {
+          year: year,
+          monthIndex: i,
+          monthName: CAMPAIGN_MONTHS[i].name,
+          monthShortName: CAMPAIGN_MONTHS[i].shortName,
+          day: dayIndex + 1
+        };
+      }
+      dayIndex -= CAMPAIGN_MONTHS[i].days;
+    }
+    return {
+      year: year,
+      monthIndex: CAMPAIGN_MONTHS.length - 1,
+      monthName: 'May',
+      monthShortName: 'May',
+      day: 31
+    };
+  };
+
+  G.formatCampaignDate = function (calendarDay) {
+    var parts = G.getCampaignDateParts(calendarDay);
+    return parts.monthShortName + ' ' + parts.day + ', Y' + parts.year;
+  };
+
+  G.formatCampaignDateRange = function (startDay, endDay) {
+    var start = G.getCampaignDateParts(startDay);
+    var end = G.getCampaignDateParts(endDay);
+    if (start.year === end.year && start.monthIndex === end.monthIndex) {
+      if (start.day === end.day) return start.monthShortName + ' ' + start.day + ', Y' + start.year;
+      return start.monthShortName + ' ' + start.day + '-' + end.day + ', Y' + start.year;
+    }
+    if (start.year === end.year) {
+      return start.monthShortName + ' ' + start.day + ' - ' + end.monthShortName + ' ' + end.day + ', Y' + start.year;
+    }
+    return start.monthShortName + ' ' + start.day + ', Y' + start.year + ' - ' + end.monthShortName + ' ' + end.day + ', Y' + end.year;
+  };
+
+  G.getDisplayCalendarDay = function () {
+    if (G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0) {
+      var stage = G.voyage.stages[G.voyage.stageIdx];
+      if (stage && stage.id === 'manage_port' && typeof G.voyage.departureDay === 'number') {
+        return G.voyage.departureDay + Math.max(1, G.voyage.outboundDays || 0);
+      }
+    }
+    if (G.player && typeof G.player.calendarDay === 'number') return G.player.calendarDay;
+    return 0;
   };
 
   G.getMapTier = function () {
@@ -102,6 +178,10 @@
         stageIdx: G.voyage.stageIdx,
         port: G.voyage.port,
         stages: G.voyage.stages,
+        departureDay: G.voyage.departureDay,
+        outboundDays: G.voyage.outboundDays,
+        returnDays: G.voyage.returnDays,
+        portBulletin: G.voyage.portBulletin,
         cargoLoaded: G.voyage.cargoLoaded,
         oilPct: G.voyage.oilPct,
         selling: G.voyage.selling,
@@ -186,6 +266,11 @@
       }
       data.version = 8;
     }
+    if (data.version < 9) {
+      if (typeof data.player.calendarDay !== 'number') data.player.calendarDay = data.player.turn || 0;
+      if (data.player.latestBulletin === undefined) data.player.latestBulletin = null;
+      data.version = 9;
+    }
     return data;
   };
 
@@ -230,6 +315,54 @@
 
   function _formatBarrels(amount) {
     return Math.round(amount).toLocaleString() + ' bbl';
+  }
+
+  function _buildPortBulletin(bulletin) {
+    if (!bulletin || !bulletin.items || !bulletin.items.length) return '';
+
+    var itemsHtml = '';
+    for (var i = 0; i < bulletin.items.length; i++) {
+      itemsHtml += '<div class="port-bulletin-item">' + bulletin.items[i].text + '</div>';
+    }
+    return '<div class="port-bulletin-list">' + itemsHtml + '</div>';
+  }
+
+  function _buildStageDate(bulletin) {
+    if (!bulletin || !bulletin.rangeLabel) return '';
+    return '<div class="stage-date">' + bulletin.rangeLabel + '</div>';
+  }
+
+  function _buildEventLabel(bulletin) {
+    if (!bulletin || !bulletin.items || !bulletin.items.length) return '';
+    return '<div class="stage-subtitle">Events</div>';
+  }
+
+  function _buildPortHeader(title, bulletin) {
+    return (
+      '<div class="port-header">' +
+        '<h3>' + title + '</h3>' +
+        _buildStageDate(bulletin) +
+      '</div>'
+    );
+  }
+
+  function _buildPortEventsBlock(bulletin) {
+    if (!bulletin || !bulletin.items || !bulletin.items.length) return '';
+    return (
+      '<div class="port-events">' +
+        _buildEventLabel(bulletin) +
+        _buildPortBulletin(bulletin) +
+      '</div>'
+    );
+  }
+
+  function _buildPortTopGrid(leftHtml, rightHtml) {
+    return (
+      '<div class="port-top-grid">' +
+        '<div class="port-panel port-panel-summary">' + leftHtml + '</div>' +
+        '<div class="port-panel port-panel-events">' + rightHtml + '</div>' +
+      '</div>'
+    );
   }
 
   function _getCargoCapacityBarrels(ship) {
@@ -429,6 +562,10 @@
     if (fill) fill.style.width = Math.round(G.voyage.oilPct) + '%';
   }
 
+  function _rollVoyageLegDays() {
+    return 3 + Math.floor(Math.random() * 3);
+  }
+
   // Start a new voyage or continue from management stage
   G.startVoyage = function () {
     var playerShip = G.getActivePlayerShip();
@@ -447,6 +584,10 @@
     G.voyage.port = G.getRandomPort();
     G.voyage.stages = buildVoyageStages(G.voyage.port);
     G.voyage.stageIdx = -1; // will be incremented by advanceStage
+    G.voyage.departureDay = typeof G.player.calendarDay === 'number' ? G.player.calendarDay : 0;
+    G.voyage.outboundDays = _rollVoyageLegDays();
+    G.voyage.returnDays = _rollVoyageLegDays();
+    G.voyage.portBulletin = null;
 
     // Init board
     G.initBoard(G.getMapTier());
@@ -493,6 +634,8 @@
           var diff = G.getDifficulty(G.player.turn);
           G.initMinesweeper(diff.mineRatio);
           G.renderTacticalCrewBar();
+          G.updateCrewActions();
+          G.drawBoard();
           G.updateMapStageCard();
           break;
 
@@ -510,6 +653,8 @@
           var diffRet = G.getDifficulty(G.player.turn);
           G.initMinesweeper(diffRet.mineRatio);
           G.renderTacticalCrewBar();
+          G.updateCrewActions();
+          G.drawBoard();
           G.updateMapStageCard();
           break;
 
@@ -528,6 +673,15 @@
           G.voyage.oilPct = G.voyage.saleStartPct;
           G.voyage.selling = false;
           G.voyage.saleValue = G.activeShip ? Math.round(G.getCargoSaleValue(G.activeShip) * (G.voyage.saleStartPct / 100)) : 0;
+          if (G.buildPortBulletin) {
+            G.voyage.portBulletin = G.buildPortBulletin({
+              startDay: G.voyage.departureDay,
+              days: G.voyage.outboundDays,
+              turn: G.player.turn,
+              marketHeadline: G.player.market ? G.player.market.headline : '',
+              title: v.port || 'Destination Port'
+            });
+          }
           G.roundScore = G.voyage.saleValue;
           G.renderTacticalCrewBar();
           G.updateMapStageCard();
@@ -932,6 +1086,7 @@
     document.getElementById('retreatOverlay').classList.remove('active');
     // Cost: 1 day
     G.player.turn++;
+    G.player.calendarDay = (G.player.calendarDay || 0) + 1;
     // Stop minesweeper
     var ms = G.ms;
     ms.gameOver = true;
@@ -963,6 +1118,7 @@
     G.initBoard(G.getMapTier());
     G.renderDock();
     G.updateMapStageCard();
+    G.savePlayer();
   };
 
   G.showReturningMenu = function () {
@@ -980,6 +1136,21 @@
   G.completeVoyage = function () {
     var t = G.transit;
     var ship = G.activeShip;
+    var returnStartDay = typeof G.voyage.departureDay === 'number'
+      ? G.voyage.departureDay + Math.max(1, G.voyage.outboundDays || 0)
+      : (G.player.calendarDay || 0);
+    var returnDays = Math.max(1, G.voyage.returnDays || 0);
+
+    if (G.buildPortBulletin) {
+      G.player.latestBulletin = G.buildPortBulletin({
+        startDay: returnStartDay,
+        days: returnDays,
+        turn: G.player.turn,
+        marketHeadline: G.player.market ? G.player.market.headline : '',
+        title: 'Persian Gulf'
+      });
+    }
+    G.player.calendarDay = returnStartDay + returnDays;
 
     // roundScore and bank already updated during selling stage
     G.player.turn++;
@@ -1161,11 +1332,13 @@
   };
 
   // --- Port action helpers ---
-  function _buildPortActions(playerShip, sailAction, sailLabel, disabled) {
+  function _buildPortActions(playerShip, sailAction, sailLabel, disabled, options) {
+    options = options || {};
     sailLabel = sailLabel || 'Set Sail';
     var html = '<div class="stage-actions">';
     var sailDisabled = disabled || !G.hasCrewRole('Captain');
     html += '<button class="stage-sail-btn' + (sailDisabled ? ' disabled' : '') + '" onclick="' + sailAction + '">' + sailLabel + '</button>';
+    html += '<div class="stage-secondary-actions">';
     if (playerShip) {
       var needsRepair = playerShip.hp < playerShip.maxHp;
       var repairCost = needsRepair ? G.getRepairCost(playerShip) : 0;
@@ -1173,7 +1346,15 @@
       html += '<button class="stage-repair-btn' + (canRepair ? '' : ' disabled') + '" onclick="repairShip()" title="' + (needsRepair ? 'Repair hull' : 'Hull intact') + '">';
       html += needsRepair ? ('🔧 ' + G.formatMoney(repairCost)) : '🔧 Repair';
       html += '</button>';
+      if (options.showShip !== false && _hasShipUpgrades(playerShip)) {
+        html += '<button class="stage-ship-btn' + (disabled ? ' disabled' : '') + '" onclick="togglePortUpgrades()" aria-expanded="' + (G.portUpgradesOpen ? 'true' : 'false') + '">';
+        html += '<span class="stage-ship-btn-icon" aria-hidden="true"></span><span>Ship</span>';
+        html += '</button>';
+      } else if (options.reserveShipSpace) {
+        html += '<div class="stage-ship-spacer" aria-hidden="true"></div>';
+      }
     }
+    html += '</div>';
     html += '</div>';
     return html;
   }
@@ -1182,6 +1363,7 @@
     if (!playerShip) return '';
     var currentTier = playerShip.tierData.tier;
     var html = '';
+    var isPortLayout = false;
     var hasUpgrades = false;
 
     for (var i = 0; i < G.SHIP_TIERS.length; i++) {
@@ -1199,6 +1381,20 @@
       html += '</div>';
     }
     return html;
+  }
+
+  function _hasShipUpgrades(playerShip) {
+    if (!playerShip) return false;
+    var currentTier = playerShip.tierData.tier;
+    for (var i = 0; i < G.SHIP_TIERS.length; i++) {
+      if (G.SHIP_TIERS[i].tier > currentTier) return true;
+    }
+    return false;
+  }
+
+  function _buildUpgradePanel(playerShip, disabled) {
+    if (!_hasShipUpgrades(playerShip) || !G.portUpgradesOpen) return '';
+    return '<div class="stage-upgrade-panel">' + _buildShipUpgrades(playerShip, disabled) + '</div>';
   }
 
   G.purchaseShip = function (tier) {
@@ -1221,6 +1417,7 @@
 
   window.buyShip = function (tier) {
     if (!G.purchaseShip(tier)) return;
+    G.portUpgradesOpen = false;
     document.getElementById('menuBankBalance').textContent = G.formatMoney(G.player.bank);
     if (G.renderShipButton) G.renderShipButton();
     G.renderTacticalCrewBar();
@@ -1228,10 +1425,16 @@
     G.updateMapStageCard();
   };
 
+  window.togglePortUpgrades = function () {
+    G.portUpgradesOpen = !G.portUpgradesOpen;
+    G.updateMapStageCard();
+  };
+
   // --- Map stage card (overlay on map with contextual info) ---
   G.updateMapStageCard = function () {
     var card = document.getElementById('mapStageCard');
     if (!card) return;
+    if (G.updateDockDate) G.updateDockDate();
 
     var v = G.voyage;
     var stage = (v.stages && v.stageIdx >= 0) ? v.stages[v.stageIdx] : null;
@@ -1244,14 +1447,15 @@
 
     var playerShip = G.getActivePlayerShip();
     var html = '';
+    var isCompactLayout = !!(stage && stage.auto);
     var cargoValue = G.activeShip ? G.activeShip.cargoValue : (playerShip ? playerShip.tierData.cargoValue : 0);
     var cargoCapacity = playerShip ? _getCargoCapacityBarrels(playerShip.tierData) : 0;
     var cargoCapacityText = playerShip ? _formatBarrels(cargoCapacity) : 'No ship';
 
     if (!stage) {
       // At port, no voyage started
-      html += '<h3>At Port</h3>';
-      html += '<div class="stage-subtitle">Persian Gulf</div>';
+      html += _buildPortHeader('Persian Gulf', G.player.latestBulletin);
+      html += _buildPortEventsBlock(G.player.latestBulletin);
       if (playerShip) {
         var loadedPct = Math.round(G.voyage.oilPct || 0);
         var loadedBarrels = cargoCapacity * loadedPct / 100;
@@ -1263,8 +1467,10 @@
           totalLabel: 'Full load cost',
           totalText: G.formatMoney(fullLoadCost)
         });
+        var cargoAffordable = G.getAffordableLoadRatio(playerShip.tierData) > 0;
+        html += _buildPortActions(playerShip, 'loadCargoAndSail()', v.loading ? 'Loading cargo…' : 'Load & Set Sail', v.loading || !cargoAffordable, { showShip: true });
+        html += _buildUpgradePanel(playerShip, v.loading);
       }
-
       if (!playerShip) {
         // No ship — show buy options
         html += '<div class="stage-detail" style="color:var(--dock-text-muted)">You need a ship to set sail.</div>';
@@ -1278,13 +1484,10 @@
           html += '<div class="stage-ship-upgrade-cost">' + G.formatMoney(s.cost) + '</div>';
           html += '</div>';
         }
-      } else {
-        var cargoAffordable = G.getAffordableLoadRatio(playerShip.tierData) > 0;
-        html += _buildPortActions(playerShip, 'loadCargoAndSail()', v.loading ? 'Loading cargo…' : 'Load & Set Sail', v.loading || !cargoAffordable);
-        html += _buildShipUpgrades(playerShip, v.loading);
       }
     } else if (stage.id === 'manage_port') {
-      html += '<h3>In Port — ' + (v.port || '') + '</h3>';
+      html += _buildPortHeader(v.port || 'Port', v.portBulletin);
+      html += _buildPortEventsBlock(v.portBulletin);
       if (playerShip) {
         var saleStartPct = Math.max(0, Math.min(100, Math.round(v.saleStartPct || 0)));
         var oilLeft = Math.round(G.voyage.oilPct || 0);
@@ -1308,20 +1511,16 @@
             { label: 'Profit', text: G.formatMoney(profit), className: profit >= 0 ? 'positive' : 'negative' }
           ]
         });
+        html += _buildPortActions(playerShip, 'continueVoyage()', 'Sail Home', v.selling !== 'done', { showShip: false, reserveShipSpace: true });
       }
-
-      var saleStatus = '&nbsp;';
-      if (v.selling) {
-        saleStatus = 'Selling cargo…';
-      }
-      html += '<div class="stage-auto-label">' + saleStatus + '</div>';
-      html += _buildPortActions(playerShip, 'continueVoyage()', 'Sail Home', v.selling !== 'done');
     } else if (stage.auto) {
       // Auto stage — just show what's happening
       html += '<div class="stage-auto-label">' + stage.label + '…</div>';
     }
 
-    card.innerHTML = html;
+    card.classList.remove('port-layout');
+    card.classList.toggle('compact-layout', isCompactLayout);
+    card.innerHTML = '<div class="map-stage-card-inner">' + html + '</div>';
     card.classList.add('active');
   };
 
@@ -1395,7 +1594,10 @@
     }
     if (G.state === 'MINESWEEPER') {
       if (role === 'Swimmer') return { label: 'In the water', className: 'deployed' };
-      if (role === 'Captain') return { label: 'At helm' };
+      if (role === 'Captain') {
+        if (G.ms && G.ms.gameWon) return { label: 'Plotting' };
+        return { label: 'At helm' };
+      }
       return { label: '' };
     }
     if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {

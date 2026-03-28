@@ -13,7 +13,8 @@ const SCRIPT_ORDER = [
   'js/game.js',
   'js/dock.js',
   'js/transit.js',
-  'js/minesweeper.js'
+  'js/minesweeper.js',
+  'js/input.js'
 ];
 
 function createClassList() {
@@ -251,6 +252,55 @@ describe('production map logic', () => {
     assert.equal(path[path.length - 1][1], 0);
   });
 
+  it('prefers a straighter transit route over a zigzag with only slight clearance gains', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(3, 5, true));
+    const revealed = makeGrid(3, 5, true);
+    G.distanceMap = [
+      [1, 10, 1, 10, 1],
+      [3, 3, 3, 3, 3],
+      [1, 1, 1, 1, 1]
+    ];
+    G.findEntryFootholdCenter = function () {
+      return [1, 0];
+    };
+
+    const path = G.findRevealedPath(revealed);
+
+    assert.ok(path);
+    assert.deepEqual(Array.from(path, function (cell) { return cell[0]; }), [1, 1, 1, 1, 1]);
+  });
+
+  it('prefers a shorter route when the safer route is significantly longer', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(5, 5, true));
+    const revealed = makeGrid(5, 5, false);
+    var safeRoute = [
+      [2, 0], [1, 1], [0, 2], [1, 3], [2, 4]
+    ];
+    var shortRoute = [
+      [2, 0], [2, 1], [2, 2], [2, 3], [2, 4]
+    ];
+    for (const cell of safeRoute.concat(shortRoute)) {
+      revealed[cell[0]][cell[1]] = true;
+    }
+    G.distanceMap = [
+      [1, 1, 12, 1, 1],
+      [1, 12, 12, 12, 1],
+      [3, 3, 3, 3, 3],
+      [1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1]
+    ];
+    G.findEntryFootholdCenter = function () {
+      return [2, 0];
+    };
+
+    const path = G.findRevealedPath(revealed);
+
+    assert.ok(path);
+    assert.deepEqual(Array.from(path, function (cell) { return cell[0]; }), [2, 2, 2, 2, 2]);
+  });
+
   it('computes adjacent mine numbers through the shipped minesweeper code', () => {
     const { G } = createRuntime();
     setBoard(G, makeGrid(3, 3, true));
@@ -310,6 +360,66 @@ describe('production map logic', () => {
     assert.ok(revealedCount <= 24);
     assert.ok(ms.mineCount > 0);
     assert.equal(G.hasPath(ms.mines), true);
+  });
+
+  it('does not apply first-click safety after the starter opening is already revealed', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(3, 3, true));
+    const ms = {
+      revealed: makeGrid(3, 3, false)
+    };
+
+    assert.equal(G.shouldUseFirstClickSafety(ms), true);
+
+    ms.revealed[1][0] = true;
+
+    assert.equal(G.shouldUseFirstClickSafety(ms), false);
+  });
+
+  it('rejects starter openings that begin with only forced mine-flag logic', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(3, 3, true));
+    const ms = {
+      mines: makeGrid(3, 3, false),
+      grid: makeGrid(3, 3, 0),
+      revealed: makeGrid(3, 3, false),
+      flagged: makeGrid(3, 3, false)
+    };
+    ms.revealed[1][0] = true;
+    ms.revealed[0][0] = true;
+    ms.revealed[2][0] = true;
+    ms.grid[1][0] = 1;
+    ms.grid[0][0] = 1;
+    ms.grid[2][0] = 1;
+    G.ms = ms;
+    G.findEntryFootholdCenter = function () {
+      return [1, 0];
+    };
+
+    assert.equal(G.isStarterOpeningAcceptable(ms), false);
+  });
+
+  it('rejects starter openings with only one deterministic safe probe', () => {
+    const { G } = createRuntime();
+    setBoard(G, [
+      [true, true, false],
+      [false, false, false],
+      [false, false, false]
+    ]);
+    const ms = {
+      mines: makeGrid(3, 3, false),
+      grid: makeGrid(3, 3, 0),
+      revealed: makeGrid(3, 3, false),
+      flagged: makeGrid(3, 3, false)
+    };
+    ms.grid[0][0] = 0;
+    ms.revealed[0][0] = true;
+    G.ms = ms;
+    G.findEntryFootholdCenter = function () {
+      return [0, 0];
+    };
+
+    assert.equal(G.isStarterOpeningAcceptable(ms), false);
   });
 });
 
@@ -414,6 +524,67 @@ describe('shared ship state', () => {
     assert.equal(G.savedMinesweeper.seconds, 12);
   });
 
+  it('persists the latest home-port bulletin across save and reload', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.player.latestBulletin = {
+      startDay: 3,
+      endDay: 6,
+      rangeLabel: 'Jun 4-6, Y1',
+      items: [
+        { day: 4, text: 'Insurance premiums for Gulf tankers spike 40%.' },
+        { day: 6, text: 'Market close: War-risk premiums hold above last month.' }
+      ]
+    };
+    G.voyage = G.createFreshVoyage();
+
+    G.savePlayer();
+
+    G.player = null;
+    G.voyage = null;
+    G.savedMinesweeper = null;
+    G.loadPlayer();
+
+    assert.ok(G.player.latestBulletin);
+    assert.equal(G.player.latestBulletin.rangeLabel, 'Jun 4-6, Y1');
+    assert.equal(G.player.latestBulletin.items.length, 2);
+    assert.equal(G.player.latestBulletin.items[0].text, 'Insurance premiums for Gulf tankers spike 40%.');
+  });
+
+  it('persists the destination-port bulletin fields across save and reload', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.voyage = G.createFreshVoyage();
+    G.voyage.stageIdx = 0;
+    G.voyage.stages = [{ id: 'manage_port' }];
+    G.voyage.port = 'Karachi';
+    G.voyage.departureDay = 1;
+    G.voyage.outboundDays = 5;
+    G.voyage.returnDays = 4;
+    G.voyage.portBulletin = {
+      startDay: 1,
+      endDay: 6,
+      rangeLabel: 'Jun 2-6, Y1',
+      items: [
+        { day: 2, text: 'Indian refineries increase Gulf crude imports by 8%.' }
+      ]
+    };
+
+    G.savePlayer();
+
+    G.player = null;
+    G.voyage = null;
+    G.savedMinesweeper = null;
+    G.loadPlayer();
+
+    assert.equal(G.voyage.port, 'Karachi');
+    assert.equal(G.voyage.departureDay, 1);
+    assert.equal(G.voyage.outboundDays, 5);
+    assert.equal(G.voyage.returnDays, 4);
+    assert.equal(G.voyage.portBulletin.rangeLabel, 'Jun 2-6, Y1');
+    assert.equal(G.voyage.portBulletin.items[0].text, 'Indian refineries increase Gulf crude imports by 8%.');
+  });
+
   it('keeps the same hire offers for the whole port visit', () => {
     const { G } = createRuntime();
     G.player = G.createFreshPlayer();
@@ -447,6 +618,64 @@ describe('shared ship state', () => {
     assert.deepEqual(Array.from(G.player.currentHirePool).sort(function (a, b) { return a - b; }), [0, 2]);
     assert.equal(G.confirmHireForRole(G.INTERN_CHARACTER_ID, 'Swimmer'), true);
     assert.deepEqual(Array.from(G.player.availableHirePool), [0, 2]);
+  });
+
+  it('does not add automatic upward drift to market rolls', () => {
+    const { G, context } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.player.market = { buyPrice: 80, sellPrice: 100, headline: '' };
+
+    const originalRandom = context.Math.random;
+    context.Math.random = function () { return 0.5; };
+    G.rollMarket();
+    context.Math.random = originalRandom;
+
+    assert.equal(G.player.market.buyPrice, 82);
+    assert.equal(G.player.market.sellPrice, 98);
+  });
+
+  it('formats campaign dates from a fictional June Y1 calendar', () => {
+    const { G } = createRuntime();
+
+    assert.equal(G.formatCampaignDate(0), 'Jun 1, Y1');
+    assert.equal(G.formatCampaignDate(30), 'Jul 1, Y1');
+    assert.equal(G.formatCampaignDateRange(0, 4), 'Jun 1-5, Y1');
+  });
+
+  it('builds port bulletins in chronological order with volume tied to voyage length', () => {
+    const { G } = createRuntime();
+
+    const shortBulletin = G.buildPortBulletin({
+      startDay: 0,
+      days: 2,
+      turn: 0,
+      marketHeadline: 'Market close: Gulf crude steadies into the weekend.'
+    });
+    const longBulletin = G.buildPortBulletin({
+      startDay: 10,
+      days: 6,
+      turn: 4,
+      marketHeadline: 'Market close: War-risk premiums hold above last month.'
+    });
+
+    assert.equal(shortBulletin.items.length, 1);
+    assert.equal(longBulletin.items.length, 3);
+    assert.ok(longBulletin.items[0].day < longBulletin.items[1].day);
+    assert.ok(longBulletin.items[1].day <= longBulletin.items[2].day);
+    assert.equal(longBulletin.items[2].text, 'Market close: War-risk premiums hold above last month.');
+  });
+
+  it('omits internal sort metadata from saved bulletin items', () => {
+    const { G } = createRuntime();
+
+    const bulletin = G.buildPortBulletin({
+      startDay: 3,
+      days: 4,
+      turn: 1,
+      marketHeadline: 'Market close: Tanker rates steady.'
+    });
+
+    assert.equal('order' in bulletin.items[0], false);
   });
 });
 
