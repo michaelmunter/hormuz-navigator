@@ -74,7 +74,9 @@
       // First click safety
       if (!ms.started) {
         ms.started = true;
-        G.ensureFirstClickSafe(r, c);
+        if (!G.shouldUseFirstClickSafety || G.shouldUseFirstClickSafety(ms)) {
+          G.ensureFirstClickSafe(r, c);
+        }
         G.startMinesweeperTimer();
       }
 

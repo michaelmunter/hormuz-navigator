@@ -1,35 +1,9 @@
 # Hormuz Navigator — Backlog
 
-This backlog reflects the current direction in `GAME.md`, not the older PR-by-PR plan.
-
-## Now
-
-- **Time model**
-  - Replace the old implicit `turn` feeling with a clearer day-based model.
-  - Decide how many days a full outbound voyage, destination stay, and return voyage consume.
-  - Make ship speed influence travel time in a readable, limited way.
-  - Keep time progression separate from map sizing.
-
-- **Map escalation**
-  - Build authored campaign/map tiers instead of resizing the board with time.
-  - First step: keep the board footprint fixed and change only framing / cell scale inside it.
-  - Later step: widen into multi-sector voyages.
-
-- **Cargo economy**
-  - Rebalance cargo volume, crude price, and dollar values so `bbl` counts and money both feel believable.
-  - Keep destination summary internally consistent:
-    - sold volume
-    - revenue
-    - purchase cost
-    - cargo profit
-  - Decide whether named destination ports stay or collapse into a generic destination port with constant leg distance.
-
 - **Transition polish**
   - Keep the mines-to-transit handoff smooth and readable.
   - Route should draw, hold, fade, then ship movement should begin.
   - Check for edge cases on both outbound and return legs.
-
-## Next
 
 - **Multi-sector route clearing**
   - Expand from one tactical sector to two or three linked sectors.

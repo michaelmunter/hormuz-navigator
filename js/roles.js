@@ -12,7 +12,7 @@
       required: true,
       limit: 1,
       desc: "Sails the ship. Every ship needs one.",
-      effect: "Counts toward crew cap. Ship cannot depart without a Captain."
+      effect: "Counts toward crew cap. Ship cannot depart without a Captain.",
     },
     swimmer: {
       id: "swimmer",
@@ -21,7 +21,7 @@
       required: true,
       limit: 1,
       desc: "Swims ahead to physically check cells for mines.",
-      effect: "Provides safe cell reveals. Dies on mine hit (permadeath)."
+      effect: "Provides safe cell reveals. Dies on mine hit.",
     },
     shotgunner: {
       id: "shotgunner",
@@ -30,7 +30,7 @@
       required: true,
       limit: 1,
       desc: "Operates the anti-FPV shotgun on deck.",
-      effect: "Player clicks FPVs to shoot. Without one, FPVs hit unopposed."
+      effect: "Player clicks FPVs to shoot. Without one, FPVs hit unopposed.",
     },
     gunner: {
       id: "gunner",
@@ -39,8 +39,9 @@
       required: false,
       limit: 1,
       desc: "Operates the auto cannon against shaheds.",
-      effect: "Shaheds only spawn when a Gunner is aboard. Can also shoot FPVs as backup.",
-      minSlots: 1 // requires at least 1 equipment slot on ship
+      effect:
+        "Shaheds only spawn when a Gunner is aboard. Can also shoot FPVs as backup.",
+      minSlots: 1, // requires at least 1 equipment slot on ship
     },
     navigator: {
       id: "navigator",
@@ -50,7 +51,7 @@
       limit: 1,
       desc: "Improves missile trajectory visibility.",
       effect: "May reveal shahed spawn points early. Extends trajectory lines.",
-      minSlots: 2
+      minSlots: 2,
     },
     engineer: {
       id: "engineer",
@@ -60,7 +61,7 @@
       limit: 1,
       desc: "Provides passive ship bonuses.",
       effect: "Extra HP, missile intercept chance, or both.",
-      minSlots: 2
+      minSlots: 2,
     },
     broker: {
       id: "broker",
@@ -69,8 +70,9 @@
       required: false,
       limit: 1,
       desc: "Manipulates oil markets on delivery.",
-      effect: "Cargo value gets a multiplier with variance (0.8x-1.5x, averaging above 1.0).",
-      minSlots: 3
+      effect:
+        "Cargo value gets a multiplier with variance (0.8x-1.5x, averaging above 1.0).",
+      minSlots: 3,
     },
     standby: {
       id: "standby",
@@ -79,14 +81,20 @@
       required: false,
       limit: null,
       desc: "On standby. Not assigned to any active duty.",
-      effect: "No effect. Crew member is idle but available."
-    }
+      effect: "No effect. Crew member is idle but available.",
+    },
   };
 
   // Ordered list of role IDs (for UI cycling, dropdowns, etc.)
   G.ROLE_ORDER = [
-    "captain", "swimmer", "shotgunner", "gunner",
-    "navigator", "engineer", "broker", "standby"
+    "captain",
+    "swimmer",
+    "shotgunner",
+    "gunner",
+    "navigator",
+    "engineer",
+    "broker",
+    "standby",
   ];
 
   // Legacy compat: flat string array used by crew.js role cycling

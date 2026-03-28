@@ -39,6 +39,28 @@
   G.cols = 0;
   G.rows = 0;
   G.oceanMask = null;
+  var OCEAN_MASK_INSET_RATIO = 0.16;
+  var OCEAN_MASK_TRANSPARENCY_THRESHOLD = 0.985;
+  var TRANSIT_DIRECTIONS = [
+    [-1, -1], [-1, 0], [-1, 1],
+    [0, -1],           [0, 1],
+    [1, -1],  [1, 0],  [1, 1]
+  ];
+  var TRANSIT_TURN_PENALTY = 0.08;
+  var TRANSIT_COAST_BIAS = 0.18;
+
+  function getTurnPenalty(fromDirIdx, toDirIdx) {
+    if (fromDirIdx < 0 || toDirIdx < 0 || fromDirIdx === toDirIdx) return 0;
+    var diff = Math.abs(fromDirIdx - toDirIdx);
+    diff = Math.min(diff, 8 - diff);
+    return diff * TRANSIT_TURN_PENALTY;
+  }
+
+  function getTransitStepCost(dmValue, dr, dc) {
+    var movementCost = (dr !== 0 && dc !== 0) ? Math.SQRT2 : 1;
+    var coastCost = TRANSIT_COAST_BIAS / (Math.max(1, dmValue) + 1);
+    return movementCost + coastCost;
+  }
 
   function getEntrySeedCells(canUseCell, direction, exactOnly) {
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { entryCol: 0 };
@@ -88,7 +110,9 @@
       G.oceanMask[r] = [];
       for (var c = 0; c < G.cols; c++) {
         var transparentCount = 0, total = 0;
-        var inset = Math.max(1, Math.round(G.CELL * 0.1));
+        // Be conservative near coastlines so tiny anti-aliased slivers do not become
+        // playable ocean cells that can hold mines or contribute to clue numbers.
+        var inset = Math.max(1, Math.round(G.CELL * OCEAN_MASK_INSET_RATIO));
         for (var py = r * G.CELL + inset; py < (r + 1) * G.CELL - inset; py++) {
           for (var px = c * G.CELL + inset; px < (c + 1) * G.CELL - inset; px++) {
             var idx = (py * canvasW + px) * 4;
@@ -96,7 +120,7 @@
             total++;
           }
         }
-        G.oceanMask[r][c] = transparentCount / total > 0.95;
+        G.oceanMask[r][c] = transparentCount / total > OCEAN_MASK_TRANSPARENCY_THRESHOLD;
       }
     }
   };
@@ -207,8 +231,8 @@
     G.distanceMap = dist;
   };
 
-  // Find revealed path from left to right that maximizes distance from coast.
-  // Uses Dijkstra with cost = 1 / (distFromLand + 1), so cells far from land are cheaper.
+  // Find revealed path from left to right that prefers shorter travel distance,
+  // with coast clearance and turn smoothness as secondary biases.
   G.findRevealedPath = function (revealed, direction) {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { exitCol: cols - 1 };
@@ -216,14 +240,18 @@
     const dm = G.distanceMap;
 
     const INF = 1e18;
-    const cost = Array.from({ length: rows }, () => Array(cols).fill(INF));
-    const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
+    const cost = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => Array(TRANSIT_DIRECTIONS.length + 1).fill(INF))
+    );
+    const parent = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => Array(TRANSIT_DIRECTIONS.length + 1).fill(null))
+    );
 
     // Simple priority queue (binary heap would be better but this is small enough)
     // Use a sorted insert array — the grid is at most ~60x40 = 2400 cells
-    const heap = []; // [cost, r, c]
-    function heapPush(c, r, col) {
-      heap.push([c, r, col]);
+    const heap = []; // [cost, r, c, dirIdx]
+    function heapPush(c, r, col, dirIdx) {
+      heap.push([c, r, col, dirIdx]);
       // bubble up
       let i = heap.length - 1;
       while (i > 0) {
@@ -253,36 +281,47 @@
     const seeds = getEntrySeedCells(function (r, c) { return !!revealed[r][c]; }, direction, true);
     for (let i = 0; i < seeds.length; i++) {
       const r = seeds[i][0], c = seeds[i][1];
-      var c0 = 1 / (Math.max(1, dm[r][c]) + 1);
-      cost[r][c] = c0;
-      heapPush(c0, r, c);
+      var c0 = 0;
+      var startDirIdx = TRANSIT_DIRECTIONS.length;
+      cost[r][c][startDirIdx] = c0;
+      heapPush(c0, r, c, startDirIdx);
     }
 
+    var bestEnd = null;
+
     while (heap.length > 0) {
-      const [d, r, c] = heapPop();
-      if (d > cost[r][c]) continue; // stale entry
+      const [d, r, c, dirIdx] = heapPop();
+      if (d > cost[r][c][dirIdx]) continue; // stale entry
       if (c === edges.exitCol) {
-        const path = [];
-        let cur = [r, c];
-        while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
-        return path.reverse();
+        bestEnd = [r, c, dirIdx];
+        break;
       }
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
-              oceanMask[nr][nc] && revealed[nr][nc]) {
-            var stepCost = 1 / (Math.max(1, dm[nr][nc]) + 1);
-            var newCost = d + stepCost;
-            if (newCost < cost[nr][nc]) {
-              cost[nr][nc] = newCost;
-              parent[nr][nc] = [r, c];
-              heapPush(newCost, nr, nc);
-            }
+      for (let nextDirIdx = 0; nextDirIdx < TRANSIT_DIRECTIONS.length; nextDirIdx++) {
+        const dr = TRANSIT_DIRECTIONS[nextDirIdx][0];
+        const dc = TRANSIT_DIRECTIONS[nextDirIdx][1];
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols &&
+            oceanMask[nr][nc] && revealed[nr][nc]) {
+          var stepCost = getTransitStepCost(dm[nr][nc], dr, dc);
+          var turnCost = getTurnPenalty(dirIdx, nextDirIdx);
+          var newCost = d + stepCost + turnCost;
+          if (newCost < cost[nr][nc][nextDirIdx]) {
+            cost[nr][nc][nextDirIdx] = newCost;
+            parent[nr][nc][nextDirIdx] = [r, c, dirIdx];
+            heapPush(newCost, nr, nc, nextDirIdx);
           }
         }
       }
+    }
+
+    if (bestEnd) {
+        const path = [];
+      let cur = bestEnd;
+      while (cur) {
+        path.push([cur[0], cur[1]]);
+        cur = parent[cur[0]][cur[1]][cur[2]];
+      }
+        return path.reverse();
     }
     return null;
   };
