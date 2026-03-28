@@ -11,6 +11,7 @@ const SCRIPT_ORDER = [
   'js/roles.js',
   'js/crew.js',
   'js/game.js',
+  'js/news.js',
   'js/dock.js',
   'js/transit.js',
   'js/minesweeper.js',

@@ -1,19 +1,9 @@
 # Hormuz Navigator — Backlog
 
-- **Transition polish**
-  - Keep the mines-to-transit handoff smooth and readable.
-  - Route should draw, hold, fade, then ship movement should begin.
-  - Check for edge cases on both outbound and return legs.
-
 - **Multi-sector route clearing**
   - Expand from one tactical sector to two or three linked sectors.
   - Preserve whole-board readability rather than introducing camera movement.
   - Transit should run continuously across all cleared sectors.
-
-- **Opener quality**
-  - Keep reducing first-move guess states in the minefield opener.
-  - Prefer real mine placement shaping over fake reveal restrictions.
-  - Make the first frontier feel readable without making the opener trivial.
 
 - **Swimmer dependency softening**
   - Add future support systems that reduce total dependence on the Swimmer without removing risk.
@@ -49,18 +39,13 @@
   - Only pursue this once the main Hormuz loop is stable.
   - Treat it as a second campaign layer, not a premature content branch.
 
-## UI / UX Polish
-
-- Tune map/modal composition on large desktop screens.
-- Keep top bar, board, and news ticker feeling like one layout.
-- Improve hover cards and tactical readability where needed.
-- Continue tightening route-clearing and transit feedback without adding clutter.
-
 ## Cleanup
 
 - Remove stale comments and terminology that still imply the old scaling model.
 - Audit `GAME.md` and code comments whenever major systems change direction.
 - Remove dead compatibility code once the new flow is stable.
+
+## Implement achievements / unlockables
 
 ## Distribution
 
@@ -68,3 +53,5 @@
 - **itch.io** — primary home base
 - **Newgrounds / GameJolt** — community discovery
 - **CrazyGames / Poki** — only after the core loop and integration requirements are mature
+
+## Sound + music effects overhall

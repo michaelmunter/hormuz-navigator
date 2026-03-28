@@ -372,7 +372,11 @@
           fpvSpawnX = Math.random() * canvasW;
           fpvSpawnY = canvasH;
         }
-        t.fpvs.push({ x: fpvSpawnX, y: fpvSpawnY, alive: true });
+        var fpvDx = fpvSpawnX - shipPx, fpvDy = fpvSpawnY - shipPy;
+        var fpvMinDist = MIN_MISSILE_SPAWN_DIST_CELLS * G.CELL * 0.5;
+        if (fpvDx * fpvDx + fpvDy * fpvDy >= fpvMinDist * fpvMinDist) {
+          t.fpvs.push({ x: fpvSpawnX, y: fpvSpawnY, alive: true });
+        }
       }
     }
 

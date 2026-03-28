@@ -45,6 +45,14 @@
     });
 
     // Mouse
+    // Transit clicks: listen on document so clicks near/outside the canvas edge still fire
+    document.addEventListener('mousedown', function (e) {
+      if (G.state !== 'TRANSIT_FORWARD' && G.state !== 'TRANSIT_RETURN') return;
+      if (e.button !== 0) return;
+      var rect = canvas.getBoundingClientRect();
+      G.handleTransitClick(e.clientX - rect.left, e.clientY - rect.top);
+    });
+
     canvas.addEventListener('mousedown', function (e) {
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -52,11 +60,8 @@
       const c = Math.floor(px / G.CELL);
       const r = Math.floor(py / G.CELL);
 
-      // Transit phase: click to destroy shaheds
+      // Transit handled by document listener above
       if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {
-        if (e.button === 0) {
-          G.handleTransitClick(px, py);
-        }
         return;
       }
 

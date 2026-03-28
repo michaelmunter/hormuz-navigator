@@ -514,6 +514,7 @@
         box-shadow: 0 6px 28px rgba(0,0,0,0.25);
       }
       .map-stage-card.compact-layout {
+        width: auto;
         max-width: none;
       }
       .map-stage-card.compact-layout .map-stage-card-inner {
@@ -542,13 +543,19 @@
         white-space: nowrap;
         text-align: right;
       }
+      .map-stage-card .stage-card-body {
+        min-height: 280px;
+        overflow-y: auto;
+        width: 0;
+        min-width: 100%;
+      }
       .map-stage-card .stage-subtitle {
         font-weight: 600;
         color: #6f5f49;
         text-transform: uppercase;
         letter-spacing: 0.75px;
         font-size: 10px;
-        margin-bottom: calc(var(--card-space) * 0.6);
+        margin-bottom: calc(var(--card-space) * 0.35);
         text-align: left;
       }
       .map-stage-card .stage-detail {
@@ -632,8 +639,7 @@
         background: rgba(194,121,26,0.5);
       }
       .map-stage-card .stage-actions {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        display: flex;
         align-items: stretch;
         gap: var(--card-space);
         margin-top: var(--card-space);
@@ -648,8 +654,8 @@
         border-radius: 6px;
         background: #c2791a;
         color: #fff;
-        padding: 0 14px;
-        min-width: 0;
+        padding: 0;
+        width: 140px;
         font-size: 14px;
         font-weight: 700;
         cursor: pointer;
@@ -746,6 +752,11 @@
       .map-stage-card .stage-upgrade-panel {
         margin-top: var(--card-space);
       }
+      .map-stage-card .stage-ship-btn.active {
+        background: rgba(180,150,110,0.6);
+        border-color: rgba(160,130,90,0.6);
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+      }
       .map-stage-card.compact-layout .stage-auto-label {
         margin: 0;
         white-space: nowrap;
@@ -768,8 +779,7 @@
         color: rgba(76, 126, 162, 0.92);
       }
       .crew-slot-action.dead {
-        color: rgba(122,107,85,0.58);
-        opacity: 0.75;
+        color: rgba(178,85,64,0.85);
       }
 
       /* ── Theme variables ── */
@@ -1119,21 +1129,8 @@
 
       /* News ticker at bottom of game area */
       .news-ticker {
-        padding: 6px 12px;
-        font-size: 12px;
-        color: var(--dock-text-muted);
-        background: rgba(235,225,210,0.95);
-        border-top: none;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        flex-shrink: 0;
-        min-height: 28px;
-        visibility: hidden;
-        opacity: 0;
-        transition: opacity 0.3s;
+        display: none;
       }
-      .news-ticker.active { visibility: visible; opacity: 1; }
 
       /* ── Buttons ── */
       .dock-btn {
@@ -1487,6 +1484,7 @@
     <script src="js/roles.js"></script>
     <script src="js/crew.js"></script>
     <script src="js/worldmap.js"></script>
+    <script src="js/news.js"></script>
     <script src="js/dock.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/minesweeper.js"></script>
