@@ -65,4 +65,13 @@
   G.getShipTier = function (tier) {
     return G.SHIP_TIERS[tier - 1];
   };
+
+  // Shared visual hull length in grid cells. Renderer and transit turning both
+  // use this so future sprite-size tweaks stay mechanically consistent.
+  G.getShipLengthCells = function (ship) {
+    if (!ship) return 1.8;
+    if (typeof ship.lengthCells === 'number') return ship.lengthCells;
+    var gw = ship.gridWidth || 1;
+    return 1.8 + (gw - 1) * 0.6;
+  };
 })();

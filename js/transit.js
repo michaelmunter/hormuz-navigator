@@ -61,11 +61,125 @@
     lastTime: 0,
     moveAccum: 0,           // accumulates fractional cell movement (0..1)
     shipAngle: 0,           // current smooth heading angle (radians)
+    entryAngle: 0,          // fixed angle used while sailing in to the first cell
     effects: [],            // visual effects (explosions, splashes)
     landEdgeCells: null,
     config: null,
     elapsed: 0,             // seconds since transit leg started (for grace period)
     startDelay: 0           // short reveal delay before the ship begins moving
+  };
+
+  G.getTransitEntryOffsetCells = function () {
+    return 0;
+  };
+
+  G.getTransitDockAngle = function (direction) {
+    var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { entryCol: 0 };
+    return edges.entryCol === G.cols - 1 ? Math.PI : 0;
+  };
+
+  G.getTransitEntryAngle = function (path) {
+    if (!path || path.length < 2) return 0;
+    return Math.atan2(path[1][0] - path[0][0], path[1][1] - path[0][1]);
+  };
+
+  G.getTransitTurnSampleSpan = function (ship) {
+    var hullCells = G.getShipLengthCells ? G.getShipLengthCells(ship || G.activeShip) : 1.8;
+    var speed = ship && typeof ship.speed === 'number'
+      ? ship.speed
+      : (G.activeShip && typeof G.activeShip.speed === 'number' ? G.activeShip.speed : 2.5);
+
+    var hullFactor = Math.max(0, hullCells - 1.8);
+    var speedNorm = Math.max(0, Math.min(1, (speed - 1.2) / (3.5 - 1.2)));
+
+    return Math.min(0.72, 0.45 + hullFactor * 0.12 + speedNorm * 0.10);
+  };
+
+  function getSegmentAngle(path, fromIdx, toIdx) {
+    if (!path || fromIdx < 0 || toIdx < 0 || fromIdx >= path.length || toIdx >= path.length || fromIdx === toIdx) {
+      return null;
+    }
+    return Math.atan2(path[toIdx][0] - path[fromIdx][0], path[toIdx][1] - path[fromIdx][1]);
+  }
+
+  function getPointAlongTransitPath(path, param, entryAngle) {
+    var lastIdx = path.length - 1;
+    if (param <= 0) {
+      var first = path[0];
+      return {
+        r: first[0] + Math.sin(entryAngle) * param,
+        c: first[1] + Math.cos(entryAngle) * param
+      };
+    }
+    if (param >= lastIdx) {
+      var last = path[lastIdx];
+      var exitAngle = getSegmentAngle(path, lastIdx - 1, lastIdx);
+      return {
+        r: last[0] + Math.sin(exitAngle) * (param - lastIdx),
+        c: last[1] + Math.cos(exitAngle) * (param - lastIdx)
+      };
+    }
+
+    var fromIdx = Math.floor(param);
+    var toIdx = fromIdx + 1;
+    var t = param - fromIdx;
+    return {
+      r: path[fromIdx][0] + (path[toIdx][0] - path[fromIdx][0]) * t,
+      c: path[fromIdx][1] + (path[toIdx][1] - path[fromIdx][1]) * t
+    };
+  }
+
+  // Sample the path slightly ahead and behind the current fractional position
+  // to get a continuous tangent across corners.
+  G.getTransitTravelAngle = function (path, shipPos, moveAccum, moveDir, entryAngle) {
+    if (!path || path.length < 2) return entryAngle || 0;
+
+    var lastIdx = path.length - 1;
+    var dir = moveDir < 0 ? -1 : 1;
+    var param = Math.max(0, Math.min(lastIdx, (shipPos || 0) + (moveAccum || 0)));
+    var sampleSpan = G.getTransitTurnSampleSpan ? G.getTransitTurnSampleSpan() : 0.45;
+    var backPoint = getPointAlongTransitPath(path, Math.max(-1, param - sampleSpan), entryAngle || 0);
+    var frontPoint = getPointAlongTransitPath(path, Math.min(lastIdx + 1, param + sampleSpan), entryAngle || 0);
+    var fromPoint = dir > 0 ? backPoint : frontPoint;
+    var toPoint = dir > 0 ? frontPoint : backPoint;
+    return Math.atan2(toPoint.r - fromPoint.r, toPoint.c - fromPoint.c);
+  };
+
+  // Compute a stable heading by averaging several upcoming path segments.
+  // This smooths away short entry kinks without forcing diagonal headings
+  // onto routes that are mostly vertical or horizontal.
+  G.getTransitPathHeading = function (path, shipPos, moveDir) {
+    if (!path || path.length < 2) return 0;
+
+    var lastIdx = path.length - 1;
+    var center = Math.max(0, Math.min(lastIdx, shipPos || 0));
+    var dir = moveDir < 0 ? -1 : 1;
+    var lookaheadSegments = 6;
+    var dr = 0;
+    var dc = 0;
+
+    if (dir > 0) {
+      var end = Math.min(lastIdx - 1, center + lookaheadSegments - 1);
+      for (var i = center; i <= end; i++) {
+        dr += path[i + 1][0] - path[i][0];
+        dc += path[i + 1][1] - path[i][1];
+      }
+    } else {
+      var start = Math.max(1, center - lookaheadSegments + 1);
+      for (var j = center; j >= start; j--) {
+        dr += path[j][0] - path[j - 1][0];
+        dc += path[j][1] - path[j - 1][1];
+      }
+    }
+
+    if (dr === 0 && dc === 0) {
+      var fallbackFrom = dir > 0 ? Math.max(0, Math.min(lastIdx - 1, center)) : Math.max(1, center);
+      var fallbackTo = dir > 0 ? fallbackFrom + 1 : fallbackFrom - 1;
+      dr = path[fallbackTo][0] - path[fallbackFrom][0];
+      dc = path[fallbackTo][1] - path[fallbackFrom][1];
+    }
+
+    return Math.atan2(dr, dc);
   };
 
   G.startTransit = function (direction) {
@@ -115,21 +229,15 @@
     t.moveAccum = 0;
     t.transitSeconds = 0;
     t.dead = false;
-    t.entryOffset = 0;
+    t.entryOffset = G.getTransitEntryOffsetCells();
     t.sailingOff = false;
     t.sailOffAccum = 0;
     t.elapsed = 0;
     t.startDelay = 0.18;
     t.lastShotTime = -SHOTGUN_COOLDOWN; // allow immediate first shot
 
-    // Determine initial heading angle from path direction
-    if (t.path.length >= 2) {
-      var dr = t.path[1][0] - t.path[0][0];
-      var dc = t.path[1][1] - t.path[0][1];
-      t.shipAngle = Math.atan2(dr, dc);
-    } else {
-      t.shipAngle = 0;
-    }
+    t.entryAngle = G.getTransitDockAngle(direction);
+    t.shipAngle = t.entryAngle;
 
     // Read HP from the player's owned ship so port repairs and damage carry
     var ps = G.getActivePlayerShip();
@@ -189,8 +297,7 @@
     t.effects.push({ type: type, x: x, y: y, size: size, life: duration, maxLife: duration });
   }
 
-  var SPEED_ACCEL = 3; // how fast shipSpeed approaches target (units/s)
-  var ANGLE_LERP = 4;  // how fast shipAngle approaches target (radians/s factor)
+  var SPEED_ACCEL = 3;  // how fast shipSpeed approaches target (units/s)
 
   // Shotgun constants (distances in cells, converted to px at use)
   var SHOTGUN_SPREAD = Math.PI / 12;   // ~15° half-angle (30° total cone)
@@ -207,8 +314,8 @@
       var entryPx = ox + firstCell[1] * G.CELL + G.CELL / 2;
       var entryPy = oy + firstCell[0] * G.CELL + G.CELL / 2;
       var backDist = t.entryOffset * G.CELL;
-      entryPx -= Math.cos(t.shipAngle) * backDist;
-      entryPy -= Math.sin(t.shipAngle) * backDist;
+      entryPx -= Math.cos(t.entryAngle) * backDist;
+      entryPy -= Math.sin(t.entryAngle) * backDist;
       return { x: entryPx, y: entryPy };
     }
 
@@ -309,27 +416,17 @@
       }
     }
 
-    // Update ship heading angle — always faces forward along the path segment
-    // the ship is visually on. When moveAccum >= 0 the ship is between
-    // shipPos and shipPos+1; when < 0 it's between shipPos-1 and shipPos.
-    var fromIdx, toIdx;
-    if (t.moveAccum >= 0) {
-      fromIdx = t.shipPos;
-      toIdx = Math.min(t.shipPos + 1, t.path.length - 1);
-    } else {
-      fromIdx = Math.max(t.shipPos - 1, 0);
-      toIdx = t.shipPos;
-    }
-    if (fromIdx !== toIdx) {
-      var dr = t.path[toIdx][0] - t.path[fromIdx][0];
-      var dc = t.path[toIdx][1] - t.path[fromIdx][1];
-      var targetAngle = Math.atan2(dr, dc);
-
-      // Smooth angle interpolation (handle wrapping)
-      var angleDiff = targetAngle - t.shipAngle;
-      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-      t.shipAngle += angleDiff * Math.min(1, dt * ANGLE_LERP);
+    if (!t.sailingOff && t.path.length > 1) {
+      if (t.entryOffset > 0) {
+        t.shipAngle = t.entryAngle;
+      } else {
+        var moveDir = t.shipSpeed < -0.01 ? -1 : 1;
+        if (t.shipPos === 0 && t.moveAccum <= 0 && moveDir > 0) {
+          t.shipAngle = t.entryAngle;
+        } else {
+          t.shipAngle = G.getTransitTravelAngle(t.path, t.shipPos, t.moveAccum, moveDir, t.entryAngle);
+        }
+      }
     }
 
     // Track elapsed time for grace period and ramp

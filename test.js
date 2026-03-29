@@ -422,6 +422,88 @@ describe('production map logic', () => {
 
     assert.equal(G.isStarterOpeningAcceptable(ms), false);
   });
+
+  it('keeps a diagonal heading stable across stair-step entry cells', () => {
+    const { G } = createRuntime();
+    const path = [
+      [6, 0],
+      [6, 1],
+      [5, 1],
+      [5, 2],
+      [4, 2],
+      [4, 3],
+      [3, 3],
+      [3, 4]
+    ];
+
+    const earlyAngles = [0, 1].map(function (shipPos) {
+      return G.getTransitPathHeading(path, shipPos, 1);
+    });
+
+    for (const angle of earlyAngles) {
+      assert.ok(Math.abs(angle + Math.PI / 4) < 0.000001);
+    }
+  });
+
+  it('prefers the dominant straight-ahead direction when entry has a small kink', () => {
+    const { G } = createRuntime();
+    const path = [
+      [6, 0],
+      [5, 1],
+      [4, 1],
+      [3, 1],
+      [2, 1],
+      [1, 1],
+      [0, 1]
+    ];
+
+    const angle = G.getTransitPathHeading(path, 0, 1);
+
+    assert.ok(angle < -Math.PI / 3);
+  });
+
+  it('keeps the sail-in position fixed even if the live heading changes', () => {
+    const { G } = createRuntime();
+    G.gridOffsetX = 0;
+    G.gridOffsetY = 0;
+    G.CELL = 20;
+
+    const transit = {
+      path: [[4, 0], [4, 1], [3, 2]],
+      shipPos: 0,
+      moveAccum: 0,
+      entryOffset: 1.35,
+      entryAngle: 0,
+      shipAngle: 0
+    };
+
+    const initialPos = G.getShipPixelPos(transit);
+    transit.shipAngle = -Math.PI / 4;
+    const turnedPos = G.getShipPixelPos(transit);
+
+    assert.equal(turnedPos.x, initialPos.x);
+    assert.equal(turnedPos.y, initialPos.y);
+  });
+
+  it('blends heading through corners instead of lagging behind them', () => {
+    const { G } = createRuntime();
+    const path = [
+      [4, 0],
+      [4, 1],
+      [3, 1],
+      [2, 1]
+    ];
+
+    const startAngle = G.getTransitTravelAngle(path, 0, 0.2, 1, 0);
+    const preTurnAngle = G.getTransitTravelAngle(path, 0, 0.9, 1, 0);
+    const postTurnAngle = G.getTransitTravelAngle(path, 1, 0.2, 1, 0);
+    const straightUpAngle = G.getTransitTravelAngle(path, 1, 0.6, 1, 0);
+
+    assert.equal(startAngle, 0);
+    assert.ok(preTurnAngle < 0 && preTurnAngle > -Math.PI / 2);
+    assert.ok(postTurnAngle < 0 && postTurnAngle > -Math.PI / 2);
+    assert.equal(straightUpAngle, -Math.PI / 2);
+  });
 });
 
 describe('shared ship state', () => {

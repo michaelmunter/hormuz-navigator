@@ -75,6 +75,7 @@
     ms.fadingMine = null;
     ms.entryFootholdCenter = null;
     ms.entryFootholdProfile = null;
+    ms.winPath = null;
     clearInterval(ms.timerInterval);
 
     document.getElementById('timer').textContent = '000';
@@ -1029,6 +1030,7 @@
     // Build distance map and compute the transit route
     G.buildDistanceMap();
     var path = G.findRevealedPath(ms.revealed);
+    ms.winPath = path;
     if (path) {
       G.setStatus('Route plotted! Preparing to set sail...', 'win-msg');
     }

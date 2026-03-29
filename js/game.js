@@ -1062,9 +1062,9 @@
     overlay.height = rect.height;
     overlay.style.width = "100%";
     overlay.style.height = "100%";
-    overlay.style.opacity = "0";
+    overlay.style.opacity = "1";
     var ovCtx = overlay.getContext("2d");
-    var revealFadeDuration = 180;
+    var revealFadeDuration = 220;
     var holdDuration = 220;
 
     ovCtx.clearRect(0, 0, rect.width, rect.height);
@@ -1075,47 +1075,28 @@
     if (path) G.drawTransitRoute(path, ovCtx, 1);
     if (path && path.length && G.drawShipOnContext) {
       var first = path[0];
+      var shipAngle = G.getTransitDockAngle ? G.getTransitDockAngle() : 0;
       var shipPx = G.gridOffsetX + first[1] * G.CELL + G.CELL / 2;
       var shipPy = G.gridOffsetY + first[0] * G.CELL + G.CELL / 2;
-      var shipAngle = 0;
-      if (path.length >= 2) {
-        shipAngle = Math.atan2(
-          path[1][0] - path[0][0],
-          path[1][1] - path[0][1],
-        );
-      }
       G.drawShipOnContext(ovCtx, shipPx, shipPy, shipAngle);
     }
     if (G.landCanvas)
       ovCtx.drawImage(G.landCanvas, 0, 0, rect.width, rect.height);
 
     wrap.appendChild(overlay);
-    overlay.offsetHeight;
-    overlay.style.transition = "opacity " + revealFadeDuration + "ms ease-out";
     requestAnimationFrame(function () {
-      overlay.style.opacity = "1";
+      G.advanceStage();
     });
 
     setTimeout(function () {
-      overlay.style.transition = "opacity 0.32s ease-out";
+      overlay.style.transition = "opacity " + revealFadeDuration + "ms ease-out";
       overlay.style.opacity = "0";
-      var startedTransit = false;
       overlay.addEventListener("transitionend", function () {
-        if (!startedTransit) {
-          startedTransit = true;
-          setTimeout(function () {
-            G.advanceStage();
-          }, 90);
-        }
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      });
+      }, { once: true });
       setTimeout(function () {
-        if (!startedTransit) {
-          startedTransit = true;
-          G.advanceStage();
-        }
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      }, 700);
+      }, revealFadeDuration + 120);
     }, holdDuration);
   };
 
@@ -1495,7 +1476,33 @@
   };
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    var hostname =
+      (typeof window !== "undefined" &&
+        window.location &&
+        window.location.hostname) ||
+      (typeof location !== "undefined" && location.hostname) ||
+      "";
+    var isLocalDevHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1";
+
+    if (isLocalDevHost) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (reg) {
+          reg.unregister();
+        });
+      }).catch(function () {});
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (key) {
+            caches.delete(key);
+          });
+        }).catch(function () {});
+      }
+    } else {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    }
   }
 
   // Test mode

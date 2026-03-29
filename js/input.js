@@ -11,22 +11,33 @@
     // Mousemove — cursor + hover highlight on unrevealed cells
     canvas.addEventListener('mousemove', function (e) {
       if (G.state !== 'MINESWEEPER' || G.ms.gameOver) {
+        G.hoverCell = { r: -1, c: -1 };
         canvas.style.cursor = 'default';
         return;
       }
       var rect = canvas.getBoundingClientRect();
       var c = Math.floor((e.clientX - rect.left - G.gridOffsetX) / G.CELL);
       var r = Math.floor((e.clientY - rect.top - G.gridOffsetY) / G.CELL);
+      var canHover =
+        r >= 0 && r < G.rows &&
+        c >= 0 && c < G.cols &&
+        G.oceanMask[r][c] &&
+        G.canProbeCell &&
+        G.canProbeCell(r, c);
       var prev = G.hoverCell;
-      if (prev.r === r && prev.c === c) return;
+      if (canHover && prev.r === r && prev.c === c) return;
+      if (!canHover && prev.r === -1 && prev.c === -1) {
+        canvas.style.cursor = 'default';
+        return;
+      }
       var oldR = prev.r, oldC = prev.c;
-      G.hoverCell = { r: r, c: c };
+      G.hoverCell = canHover ? { r: r, c: c } : { r: -1, c: -1 };
       // Redraw old cell to remove highlight
       if (oldR >= 0 && oldR < G.rows && oldC >= 0 && oldC < G.cols && G.oceanMask[oldR][oldC] && !G.ms.revealed[oldR][oldC]) {
         G.drawCell(oldR, oldC);
       }
       // Update cursor and draw highlight on new cell
-      if (r >= 0 && r < G.rows && c >= 0 && c < G.cols && G.canProbeCell && G.canProbeCell(r, c)) {
+      if (canHover) {
         canvas.style.cursor = 'crosshair';
         G.drawCell(r, c);
       } else {

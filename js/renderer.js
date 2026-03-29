@@ -133,8 +133,17 @@
     // Batch grid: single-pass lines so no alpha overlap at intersections
     G.drawOceanGrid();
     G.clipToOcean();
-    if (G.state === 'MINESWEEPER' && G.ms && !G.ms.introActive && G.drawMinesweeperEntryShip) {
+    if (G.state === 'MINESWEEPER' && G.ms && !G.ms.introActive) {
+      if (G.ms.gameWon && G.ms.winPath && G.drawShipOnContext) {
+        var CELL = G.CELL;
+        var first = G.ms.winPath[0];
+        var angle = G.getTransitDockAngle ? G.getTransitDockAngle() : 0;
+        var px = G.gridOffsetX + first[1] * CELL + CELL / 2;
+        var py = G.gridOffsetY + first[0] * CELL + CELL / 2;
+        G.drawShip(px, py, angle);
+      } else if (G.drawMinesweeperEntryShip) {
         G.drawMinesweeperEntryShip();
+      }
     }
   };
 
@@ -157,8 +166,8 @@
       }
     }
     ctx.stroke();
-  };
 
+  };
   // Draw grid lines for a single cell AND repair shared edges with neighbors
   // that clearRect may have erased.
   function drawCellGrid(ctx, r, c) {
@@ -228,6 +237,8 @@
     } else {
       // Unrevealed cell — no per-cell drawing, grid drawn in batch pass
       ctx.clearRect(x, y, CELL, CELL);
+      ctx.fillStyle = 'rgba(74, 103, 156, 0.055)';
+      ctx.fillRect(x, y, CELL, CELL);
 
       // Hover highlight — subtle fill + border on unrevealed cells
       if (G.hoverCell && G.hoverCell.r === r && G.hoverCell.c === c && !ms.flagged[r][c]) {
@@ -375,14 +386,11 @@
   // Ship sprite has bow pointing UP (-π/2 direction).
   // shipAngle is the heading in radians (0 = rightward, π/2 = downward).
   // Size is derived from the image's aspect ratio, scaled to a fixed length in cells.
-  var BASE_SHIP_LENGTH = 1.8; // ship length in grid cells for gridWidth 1
-
   G.drawShipOnContext = function (ctx, px, py, shipAngle) {
     var CELL = G.CELL;
     var img = G.sprites.ship;
     if (!ctx || !img.complete || !img.naturalWidth) return;
-    var gw = (G.activeShip && G.activeShip.gridWidth) || 1;
-    var lengthCells = BASE_SHIP_LENGTH + (gw - 1) * 0.6;
+    var lengthCells = G.getShipLengthCells ? G.getShipLengthCells(G.activeShip) : 1.8;
     var len = CELL * lengthCells;
     var beam = len * (img.naturalWidth / img.naturalHeight);
     ctx.save();
