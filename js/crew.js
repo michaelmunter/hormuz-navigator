@@ -9,6 +9,7 @@
   var BASE_HIRE_COST = 200000; // $200K
   var INTERN_CHARACTER_ID = 10;
   var PORT_HIRE_POOL_SIZE = 3;
+  var DEFAULT_CREW_SNIPPET = "Keeps their history to themselves. Shows up on time and asks where the cargo is going.";
 
   // 28 characters with individual portraits (sprites/crew/00.png – 27.png, 256×256 each)
   // weight: cost multiplier (1.0 = average, higher = more expensive to hire)
@@ -246,7 +247,14 @@
   G.CHARACTER_POOL = CHARACTER_POOL;
   // G.CREW_ROLES is now defined in roles.js
   G.BASE_HIRE_COST = BASE_HIRE_COST;
+  G.DEFAULT_CREW_SNIPPET = DEFAULT_CREW_SNIPPET;
   G.INTERN_CHARACTER_ID = INTERN_CHARACTER_ID;
+
+  G.getCrewTemplate = function (charId) {
+    return CHARACTER_POOL.find(function (c) {
+      return c.id === charId;
+    }) || null;
+  };
 
   function getFiniteHireIds() {
     return CHARACTER_POOL
@@ -330,9 +338,7 @@
 
   // Calculate hire cost for a character
   G.getHireCost = function (charId) {
-    var template = CHARACTER_POOL.find(function (c) {
-      return c.id === charId;
-    });
+    var template = G.getCrewTemplate(charId);
     if (!template) return BASE_HIRE_COST;
     if (template.weight === 0) return 0;
     var reputationMultiplier = 1 + 0.1 * (G.player.totalCrewDeaths || 0);
@@ -341,13 +347,12 @@
 
   // Create a new crew member from pool (role assigned separately)
   G.hireCrewMember = function (charId, role) {
-    var template = CHARACTER_POOL.find(function (c) {
-      return c.id === charId;
-    });
+    var template = G.getCrewTemplate(charId);
     if (!template) return null;
     return {
       charId: template.id,
       name: template.name,
+      bio: template.bio || DEFAULT_CREW_SNIPPET,
       role: role || "Standby",
       quirkLabel: template.quirkLabel,
       quirkStat: template.quirkStat,

@@ -15,15 +15,41 @@ The player manages a tanker, hires crew, clears a safe passage through mined wat
 
 ## Campaign Structure
 
-The early game uses a single tactical minefield. Later weeks expand the theater into multiple linked sectors.
+The early game uses a single tactical minefield close to Hormuz. Later campaign beats widen the theater into multiple linked sectors and unlock new destination contracts deeper in the Gulf.
 
-The fiction is that Iranian mining operations are spreading outward. The game expression of that is:
+The campaign should not feel like the map is merely zooming out for technical reasons. It should feel like the regional war economy is mutating and forcing the player into stranger and riskier work.
+
+The game expression of that is:
 
 - more sectors to clear before a run is safe
-- wider visible geography over time
+- wider visible geography at authored escalation beats
 - higher transit threat once the route is being sailed
+- new destination contracts with distinct cargo rules and unlock requirements
+- old routes changing in profitability, availability, and political risk as the conflict evolves
 
 This is intended to feel like escalation, not arbitrary level scaling.
+
+### Contract Ladder
+
+Ports should behave as distinct contracts, not just farther destinations.
+
+Each contract should define:
+
+- destination port or terminal
+- cargo type
+- unlock condition
+- route length and sector count
+- transit threat profile
+- port-view fiction and event flavor
+
+New contracts can open because:
+
+- the player bought a ship class that can legally or physically carry the cargo
+- the player hired a specialist who can broker or coordinate the work
+- regional tension crossed a campaign threshold
+- a previous voyage changed the politics or economics of a route
+
+Older contracts do not need to disappear. They can remain available with lower profit, lower prestige, or different risk so the player is choosing between safer legacy work and more dangerous high-end jobs.
 
 ## Phase 1: Route Clearing
 
@@ -83,8 +109,10 @@ The game is not trying to be pure deterministic Minesweeper. It is a logistics-a
 ### Map Direction
 
 - Early game can stay focused tightly on the strait.
+- Keep tile size stable and readable for onboarding.
+- Once the minimum comfortable tile size is reached, stop shrinking tiles and widen the theater only at authored campaign beats.
 - As the campaign escalates, the visible theater can widen into more of the Gulf.
-- Expansion can come from either wider framing, more sectors, or both.
+- Expansion can come from wider framing, more sectors, new route endpoints, or a mix of those.
 - The goal is to make Iranian mine expansion feel geographic and strategic, not just like a larger abstract puzzle grid.
 - The board should keep a stable on-screen footprint. Escalation should change map framing and cell scale within that frame, not make the HTML play area jump in size.
 - Escalation should be authored as timeline tiers or campaign beats, not applied as tiny visual resizes every week.
@@ -165,6 +193,34 @@ Ports are the economic and roster-management layer.
 - cargo is sold automatically on arrival
 - the sale animates so the player can review the result
 - the player then chooses when to sail home
+- the port view should show local events, rumors, handlers, and consequences tied to routes the player has already used
+- different destination ports should feel like different jobs, not the same screen with a different name
+
+### Contract Progression
+
+The destination ladder should widen the game through contract variety rather than a single linear list of farther ports.
+
+| Contract | Unlock | Cargo / fiction | Tactical expression | Port-view flavor |
+| --- | --- | --- | --- | --- |
+| Fujairah starter run | Available from the start | Conventional oil export. Straightforward legal trade and the cleanest fiction in the campaign. | Tight Hormuz framing, one sector, lowest threat mix, used for onboarding. | Straight port bulletin, pricing, basic rumors, a stable-feeling commercial environment. |
+| Dubai / Jebel Ali commercial run | Complete early runs or reach a tension beat | Higher-volume commercial traffic with better margins and more attention. | Slightly longer corridor, denser civilian traffic, more pressure to protect cargo value. | More financial chatter, insurance concerns, and visible signs that the conflict is distorting normal trade. |
+| Doha / Ras Laffan LNG run | Buy an LNG-capable ship | LNG contract. Specialized cargo that justifies a new hull and marks the first major logistics fork. | Longer route, more delicate economics, tougher penalty for loss, stronger incentive to preserve the ship. | Terminal-side corporate language, specialized loading visuals, market spikes, and gas-focused headlines. |
+| Shadow fleet contract | Hire a coordinator who can broker off-book work | Sanctions-busting or deniable tanker work. The coordinator should look suspiciously like Budanov without being literally him. | Dirtier threat mix, false-manifest fiction, stronger inspection or exposure pressure, heavier political risk. | Handlers, fake paperwork, covert briefings, and bulletin items showing events unfolding in waters the player already traveled through. |
+| Kuwait endgame run | Reach late-campaign tension and prove reliability on advanced contracts | Wartime arms shipment. Highest stakes, least deniable, and the clearest statement that the regional conflict has fully consumed the trade layer. | Widest framing, longest corridor, most sectors, and the hardest combined mine and transit pressure in the campaign. | War-footing atmosphere, military urgency, high-consequence headlines, and a port state that feels like the campaign finale. |
+
+This structure makes ship upgrades and crew hires matter beyond raw stats. A new hull or specialist should open a new class of work, not merely add HP or speed.
+
+### Port State Changes
+
+Ports do not need to be destroyed in sequence. A more flexible model is:
+
+- some ports stay open but become less profitable
+- some are temporarily closed by strikes, sanctions, or insurance refusal
+- some only accept certain cargo classes or ship types
+- some only appear after the player hires a specific specialist
+- some become politically hotter because of previous voyages
+
+This keeps the world reactive without making the campaign feel like a rigid scripted corridor.
 
 ## Crew Philosophy
 
@@ -188,7 +244,7 @@ That creates a better strategic layer than salaries:
 - risk worsening regional danger while doing so
 - later manipulate markets through special crew or port interactions
 
-Week advancement should be separated from visual map scaling. Time passing can affect prices, headlines, and strategic tension without automatically resizing the tactical board every single week.
+Week advancement should be separated from visual map scaling. Time passing can affect prices, contract availability, headlines, and strategic tension without automatically resizing the tactical board every single week.
 
 ## Design Goals
 
@@ -204,6 +260,8 @@ The game is moving toward this structure:
 
 - route-expansion mine clearing instead of pure Minesweeper abstraction
 - multi-sector voyages instead of one endlessly rescaled board
+- authored map-widening beats instead of constant micro-zoom changes
 - continuous transit across all cleared sectors
 - meaningful retreat-or-risk decisions when the Swimmer is lost
-- stronger economic timing at port between runs
+- port-specific contract ladders gated by ships, crew, and campaign tension
+- stronger economic timing and world-state storytelling at port between runs

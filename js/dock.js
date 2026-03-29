@@ -161,7 +161,11 @@
   }
 
   function getCrewFlavor(member) {
-    return member.quirkLabel || '';
+    if (!member) return '';
+    if (member.bio) return member.bio;
+    var template = G.getCrewTemplate ? G.getCrewTemplate(member.charId) : null;
+    if (template && template.bio) return template.bio;
+    return G.DEFAULT_CREW_SNIPPET || '';
   }
 
   function getDeadCrewDisposition(member) {
