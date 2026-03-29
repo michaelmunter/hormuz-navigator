@@ -99,8 +99,33 @@
     var crop = G.crop;
     var sx = crop.x, sy = crop.y;
     var sw = crop.w || G.oceanImg.width, sh = crop.h || G.oceanImg.height;
+    // Ocean layer: satellite image + blue tint for tile-matching ocean color.
+    // This provides smooth pixel-level ocean coloring under the land layer,
+    // so game tiles don't need hard-edged fills that clash with smooth coastlines.
     G.octx.drawImage(G.oceanImg, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+    // Blue tint (source-atop keeps ocean boundary)
+    G.octx.globalCompositeOperation = 'source-atop';
+    G.octx.fillStyle = 'rgba(60, 90, 150, 0.40)';
+    G.octx.fillRect(0, 0, canvasW, canvasH);
+    // Screen pass: lifts dark ocean tones more than light ones,
+    // reducing contrast between deep water and coastal shallows.
+    G.octx.globalCompositeOperation = 'screen';
+    G.octx.fillStyle = '#101c28';
+    G.octx.fillRect(0, 0, canvasW, canvasH);
+    G.octx.globalCompositeOperation = 'source-over';
+    // Land layer on top — smooth coastline masks everything below
     G.lctx.drawImage(G.landImg, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+  };
+
+  // Clip game canvas to ocean shape — removes tile artifacts on land/islands.
+  // Uses destination-in with ocean image: keeps game pixels only where ocean is opaque.
+  G.clipToOcean = function () {
+    var crop = G.crop;
+    var sx = crop.x, sy = crop.y;
+    var sw = crop.w || G.oceanImg.width, sh = crop.h || G.oceanImg.height;
+    G.gctx.globalCompositeOperation = 'destination-in';
+    G.gctx.drawImage(G.oceanImg, sx, sy, sw, sh, 0, 0, G.gameCanvas.width, G.gameCanvas.height);
+    G.gctx.globalCompositeOperation = 'source-over';
   };
 
   G.drawBoard = function () {
@@ -111,10 +136,60 @@
         G.drawCell(r, c);
       }
     }
+    // Batch grid: single-pass lines so no alpha overlap at intersections
+    G.drawOceanGrid();
+    G.clipToOcean();
     if (G.state === 'MINESWEEPER' && G.ms && !G.ms.introActive && G.drawMinesweeperEntryShip) {
-      G.drawMinesweeperEntryShip();
+        G.drawMinesweeperEntryShip();
     }
   };
+
+  G.drawOceanGrid = function () {
+    var ctx = G.gctx;
+    var CELL = G.CELL;
+    // Solid color — no alpha means overlap is harmless, so draw all 4 edges
+    // per cell in a single beginPath/stroke for simplicity and speed.
+    ctx.strokeStyle = '#3a5272';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (!G.oceanMask[r][c]) continue;
+        var x = c * CELL, y = r * CELL;
+        ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + 0.5);           // top
+        ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + 0.5, y + CELL + 0.5);           // left
+        ctx.moveTo(x + 0.5, y + CELL + 0.5); ctx.lineTo(x + CELL + 0.5, y + CELL + 0.5); // bottom
+        ctx.moveTo(x + CELL + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + CELL + 0.5); // right
+      }
+    }
+    ctx.stroke();
+  };
+
+  // Draw grid lines for a single cell AND repair shared edges with neighbors
+  // that clearRect may have erased.
+  function drawCellGrid(ctx, r, c) {
+    var CELL = G.CELL;
+    var x = c * CELL, y = r * CELL;
+    ctx.strokeStyle = '#3a5272';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (G.oceanMask[r][c]) {
+      // All 4 edges of this cell
+      ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + 0.5);           // top
+      ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + 0.5, y + CELL + 0.5);           // left
+      ctx.moveTo(x + 0.5, y + CELL + 0.5); ctx.lineTo(x + CELL + 0.5, y + CELL + 0.5); // bottom
+      ctx.moveTo(x + CELL + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + CELL + 0.5); // right
+    }
+    // Repair: left neighbor's right edge (shared with our left edge)
+    if (c > 0 && G.oceanMask[r][c - 1]) {
+      ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + 0.5, y + CELL + 0.5);
+    }
+    // Repair: top neighbor's bottom edge (shared with our top edge)
+    if (r > 0 && G.oceanMask[r - 1][c]) {
+      ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + 0.5);
+    }
+    ctx.stroke();
+  }
 
   G.drawCell = function (r, c) {
     const CELL = G.CELL;
@@ -128,12 +203,10 @@
     }
 
     if (ms.revealed[r][c]) {
-      // Revealed cell — clear first, then lighter variant of ocean #4e629d
+      // Revealed cell — lighter tint, grid drawn in batch pass
       ctx.clearRect(x, y, CELL, CELL);
-      ctx.fillStyle = 'rgba(110, 130, 190, 0.35)';
+      ctx.fillStyle = 'rgba(80, 110, 170, 0.22)';
       ctx.fillRect(x, y, CELL, CELL);
-      ctx.strokeStyle = 'rgba(90, 110, 170, 0.25)';
-      ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
 
       if (ms.revealed[r][c] === 'boom') {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
@@ -159,17 +232,8 @@
         ctx.restore();
       }
     } else {
-      // Unrevealed cell — clear first so removed flags disappear
+      // Unrevealed cell — no per-cell drawing, grid drawn in batch pass
       ctx.clearRect(x, y, CELL, CELL);
-      // Subtle bevel lines matching ocean #4e629d family
-      ctx.globalAlpha = 0.2;
-      ctx.fillStyle = '#7080b8';
-      ctx.fillRect(x, y, CELL, 1);
-      ctx.fillRect(x, y, 1, CELL);
-      ctx.fillStyle = '#2a3468';
-      ctx.fillRect(x + CELL - 1, y, 1, CELL);
-      ctx.fillRect(x, y + CELL - 1, CELL, 1);
-      ctx.globalAlpha = 1.0;
 
       // Hover highlight — subtle fill + border on unrevealed cells
       if (G.hoverCell && G.hoverCell.r === r && G.hoverCell.c === c && !ms.flagged[r][c]) {
@@ -203,6 +267,7 @@
         ctx.lineWidth = 1;
       }
     }
+    drawCellGrid(ctx, r, c);
   };
 
   G.drawMine = function (x, y) {

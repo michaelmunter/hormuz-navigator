@@ -163,6 +163,16 @@
       : '&#128578;';
     G.setStatus(getMinefieldObjectiveText(), '');
     G.drawBoard();
+    // Ship sprite may not be loaded yet (map images load first, triggering
+    // restore before sprite PNGs finish). Redraw once ship sprite is ready.
+    if (!G.sprites.ship.complete) {
+      G.sprites.ship.addEventListener('load', function onShipLoad() {
+        G.sprites.ship.removeEventListener('load', onShipLoad);
+        if (G.state === 'MINESWEEPER' && !G.ms.introActive) {
+          G.drawMinesweeperEntryShip();
+        }
+      });
+    }
     if (ms.started && !ms.gameOver) G.startMinesweeperTimer();
   };
 

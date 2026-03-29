@@ -23,8 +23,28 @@
   // src is set in game.js after onload handler is attached
 
   // Source crop rectangle (pixels in the full-size image).
-  // Adjust these to frame the strait within the oversized PNG.
+  // Computed by getCropForTier() based on campaign escalation.
   G.crop = { x: 0, y: 0, w: 0, h: 0 }; // 0 = use full image
+
+  // Map image is 3242x2401 (NASA Blue Marble crop of Persian Gulf).
+  // Tier 0: tight on the Strait of Hormuz.
+  // Tier 10: full Gulf from Kuwait to Gulf of Oman.
+  // Interpolate linearly between these two endpoints.
+  var CROP_TIGHT = { cx: 2200, cy: 1380, w: 1300, h: 780 }; // strait
+  var CROP_WIDE  = { cx: 1621, cy: 1200, w: 3242, h: 1945 }; // full Gulf
+  var IMG_W = 3242, IMG_H = 2401;
+
+  G.getCropForTier = function (tier) {
+    var t = Math.min(Math.max(tier || 0, 0), 10) / 10;
+    var cx = Math.round(CROP_TIGHT.cx + (CROP_WIDE.cx - CROP_TIGHT.cx) * t);
+    var cy = Math.round(CROP_TIGHT.cy + (CROP_WIDE.cy - CROP_TIGHT.cy) * t);
+    var w  = Math.round(CROP_TIGHT.w  + (CROP_WIDE.w  - CROP_TIGHT.w)  * t);
+    var h  = Math.round(CROP_TIGHT.h  + (CROP_WIDE.h  - CROP_TIGHT.h)  * t);
+    // Clamp to image bounds
+    var x = Math.max(0, Math.min(IMG_W - w, cx - Math.floor(w / 2)));
+    var y = Math.max(0, Math.min(IMG_H - h, cy - Math.floor(h / 2)));
+    return { x: x, y: y, w: w, h: h };
+  };
 
   // Sprite images (loaded in game.js)
   G.sprites = {
@@ -39,8 +59,8 @@
   G.cols = 0;
   G.rows = 0;
   G.oceanMask = null;
-  var OCEAN_MASK_INSET_RATIO = 0.16;
-  var OCEAN_MASK_TRANSPARENCY_THRESHOLD = 0.985;
+  var OCEAN_MASK_INSET_RATIO = 0.12;
+  var OCEAN_MASK_TRANSPARENCY_THRESHOLD = 0.92;
   var TRANSIT_DIRECTIONS = [
     [-1, -1], [-1, 0], [-1, 1],
     [0, -1],           [0, 1],
@@ -121,6 +141,23 @@
           }
         }
         G.oceanMask[r][c] = transparentCount / total > OCEAN_MASK_TRANSPARENCY_THRESHOLD;
+      }
+    }
+    // Post-process: remove isolated ocean cells (island tiles).
+    // Any ocean cell with 5+ non-ocean neighbors is likely a tiny island — un-tile it.
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (!G.oceanMask[r][c]) continue;
+        var landN = 0;
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            var nr = r + dr, nc = c + dc;
+            if (nr < 0 || nr >= G.rows || nc < 0 || nc >= G.cols) continue; // skip out-of-bounds
+            if (!G.oceanMask[nr][nc]) landN++;
+          }
+        }
+        if (landN >= 5) G.oceanMask[r][c] = false;
       }
     }
   };

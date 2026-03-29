@@ -558,6 +558,7 @@
           G.activeShip = G.getActivePlayerShip()
             ? G.getActivePlayerShip().tierData
             : null;
+          if (G.activeShip) G.sprites.ship.src = G.activeShip.sprite;
           G.roundScore = G.voyage.saleValue || 0;
           if (G.voyage.selling && G.voyage.selling !== "done") {
             var remainingPct = Math.max(
@@ -599,6 +600,7 @@
           G.activeShip = G.getActivePlayerShip()
             ? G.getActivePlayerShip().tierData
             : null;
+          if (G.activeShip) G.sprites.ship.src = G.activeShip.sprite;
           G.state = "MINESWEEPER";
           G.updateBarMode("gameplay");
           G.restoreMinesweeper(G.savedMinesweeper);
@@ -643,6 +645,9 @@
     var barHeight = 56;
     var maxW = window.innerWidth;
     var maxH = window.innerHeight - barHeight;
+
+    // Set crop region based on campaign tier
+    G.crop = G.getCropForTier(turn);
 
     var grid = G.getGridSize(turn);
     G.cols = grid.cols;
