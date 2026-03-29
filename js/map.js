@@ -17,6 +17,26 @@
   };
 
   G.CELL = 20; // default, recomputed in initBoard()
+  G.gridOffsetX = 0; // pixel offset from canvas origin to grid top-left
+  G.gridOffsetY = 0;
+  G.gridW = 0; // grid pixel dimensions (cols * CELL)
+  G.gridH = 0;
+
+  // Cell center in canvas pixel space
+  G.cellToPx = function (r, c) {
+    return {
+      x: G.gridOffsetX + c * G.CELL + G.CELL / 2,
+      y: G.gridOffsetY + r * G.CELL + G.CELL / 2
+    };
+  };
+
+  // Cell top-left corner in canvas pixel space
+  G.cellTopLeft = function (r, c) {
+    return {
+      x: G.gridOffsetX + c * G.CELL,
+      y: G.gridOffsetY + r * G.CELL
+    };
+  };
 
   G.oceanImg = new Image();  // hormuz-ocean.png — blue ocean, transparent land
   G.landImg = new Image();   // hormuz-land.png — land terrain, transparent ocean
@@ -70,9 +90,11 @@
   var TRANSIT_COAST_BIAS = 0.18;
 
   function getTurnPenalty(fromDirIdx, toDirIdx) {
-    if (fromDirIdx < 0 || toDirIdx < 0 || fromDirIdx === toDirIdx) return 0;
+    // Sentinel index (TRANSIT_DIRECTIONS.length) = "no previous heading" = no turn cost
+    if (fromDirIdx < 0 || toDirIdx < 0 || fromDirIdx === toDirIdx
+        || fromDirIdx >= TRANSIT_DIRECTIONS.length) return 0;
     var diff = Math.abs(fromDirIdx - toDirIdx);
-    diff = Math.min(diff, 8 - diff);
+    diff = Math.min(diff, TRANSIT_DIRECTIONS.length - diff);
     return diff * TRANSIT_TURN_PENALTY;
   }
 
@@ -114,27 +136,24 @@
   // Build the ocean mask by sampling alpha from hormuz-land.png.
   // Where land is transparent (alpha < 128) = ocean cell.
   G.buildOceanMask = function (canvasW, canvasH) {
-    var crop = G.crop;
-    var sx = crop.x, sy = crop.y;
-    var sw = crop.w || G.landImg.width, sh = crop.h || G.landImg.height;
+    var vc = G.viewportCrop;
     var tmp = document.createElement('canvas');
     tmp.width = canvasW;
     tmp.height = canvasH;
     var tctx = tmp.getContext('2d');
-    tctx.drawImage(G.landImg, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+    tctx.drawImage(G.landImg, vc.x, vc.y, vc.w, vc.h, 0, 0, canvasW, canvasH);
     var imgData = tctx.getImageData(0, 0, canvasW, canvasH);
     var d = imgData.data;
 
+    var ox = G.gridOffsetX, oy = G.gridOffsetY;
     G.oceanMask = [];
     for (var r = 0; r < G.rows; r++) {
       G.oceanMask[r] = [];
       for (var c = 0; c < G.cols; c++) {
         var transparentCount = 0, total = 0;
-        // Be conservative near coastlines so tiny anti-aliased slivers do not become
-        // playable ocean cells that can hold mines or contribute to clue numbers.
         var inset = Math.max(1, Math.round(G.CELL * OCEAN_MASK_INSET_RATIO));
-        for (var py = r * G.CELL + inset; py < (r + 1) * G.CELL - inset; py++) {
-          for (var px = c * G.CELL + inset; px < (c + 1) * G.CELL - inset; px++) {
+        for (var py = oy + r * G.CELL + inset; py < oy + (r + 1) * G.CELL - inset; py++) {
+          for (var px = ox + c * G.CELL + inset; px < ox + (c + 1) * G.CELL - inset; px++) {
             var idx = (py * canvasW + px) * 4;
             if (d[idx + 3] < 128) transparentCount++;
             total++;

@@ -657,8 +657,26 @@
     var cellH = Math.floor(maxH / G.rows);
     G.CELL = Math.max(16, Math.min(38, Math.min(cellW, cellH)));
 
-    var canvasW = G.cols * G.CELL;
-    var canvasH = G.rows * G.CELL;
+    // Grid pixel dimensions
+    G.gridW = G.cols * G.CELL;
+    G.gridH = G.rows * G.CELL;
+
+    // Canvas fills viewport; grid is centered within it
+    var canvasW = maxW;
+    var canvasH = maxH;
+    G.gridOffsetX = Math.floor((canvasW - G.gridW) / 2);
+    G.gridOffsetY = Math.floor((canvasH - G.gridH) / 2);
+
+    // Compute expanded crop that maps the full viewport to source image space.
+    // The grid portion (gridOffsetX..gridOffsetX+gridW) maps to G.crop in source space.
+    var scaleX = G.crop.w / G.gridW;
+    var scaleY = G.crop.h / G.gridH;
+    G.viewportCrop = {
+      x: G.crop.x - G.gridOffsetX * scaleX,
+      y: G.crop.y - G.gridOffsetY * scaleY,
+      w: canvasW * scaleX,
+      h: canvasH * scaleY
+    };
 
     G.sizeCanvases(canvasW, canvasH);
     G.buildOceanMask(canvasW, canvasH);
@@ -1057,8 +1075,8 @@
     if (path) G.drawTransitRoute(path, ovCtx, 1);
     if (path && path.length && G.drawShipOnContext) {
       var first = path[0];
-      var shipPx = first[1] * G.CELL + G.CELL / 2;
-      var shipPy = first[0] * G.CELL + G.CELL / 2;
+      var shipPx = G.gridOffsetX + first[1] * G.CELL + G.CELL / 2;
+      var shipPy = G.gridOffsetY + first[0] * G.CELL + G.CELL / 2;
       var shipAngle = 0;
       if (path.length >= 2) {
         shipAngle = Math.atan2(

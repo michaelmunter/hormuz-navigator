@@ -15,8 +15,8 @@
         return;
       }
       var rect = canvas.getBoundingClientRect();
-      var c = Math.floor((e.clientX - rect.left) / G.CELL);
-      var r = Math.floor((e.clientY - rect.top) / G.CELL);
+      var c = Math.floor((e.clientX - rect.left - G.gridOffsetX) / G.CELL);
+      var r = Math.floor((e.clientY - rect.top - G.gridOffsetY) / G.CELL);
       var prev = G.hoverCell;
       if (prev.r === r && prev.c === c) return;
       var oldR = prev.r, oldC = prev.c;
@@ -57,8 +57,8 @@
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      const c = Math.floor(px / G.CELL);
-      const r = Math.floor(py / G.CELL);
+      const c = Math.floor((px - G.gridOffsetX) / G.CELL);
+      const r = Math.floor((py - G.gridOffsetY) / G.CELL);
 
       // Transit handled by document listener above
       if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {
@@ -135,8 +135,8 @@
       if (ms.gameOver) return;
       if (ms.introActive) return;
       var rect = canvas.getBoundingClientRect();
-      var c = Math.floor((e.clientX - rect.left) / G.CELL);
-      var r = Math.floor((e.clientY - rect.top) / G.CELL);
+      var c = Math.floor((e.clientX - rect.left - G.gridOffsetX) / G.CELL);
+      var r = Math.floor((e.clientY - rect.top - G.gridOffsetY) / G.CELL);
       if (r < 0 || r >= G.rows || c < 0 || c >= G.cols || !G.oceanMask[r][c]) return;
       if (ms.revealed[r][c]) return;
       ms.flagged[r][c] = !ms.flagged[r][c];
@@ -158,8 +158,8 @@
       touchMoved = false;
       var touch = e.touches[0];
       var rect = canvas.getBoundingClientRect();
-      var c = Math.floor((touch.clientX - rect.left) / G.CELL);
-      var r = Math.floor((touch.clientY - rect.top) / G.CELL);
+      var c = Math.floor((touch.clientX - rect.left - G.gridOffsetX) / G.CELL);
+      var r = Math.floor((touch.clientY - rect.top - G.gridOffsetY) / G.CELL);
 
       // Transit phase: immediate tap to destroy shaheds
       if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {

@@ -96,12 +96,9 @@
   };
 
   G.drawLayers = function (canvasW, canvasH) {
-    var crop = G.crop;
-    var sx = crop.x, sy = crop.y;
-    var sw = crop.w || G.oceanImg.width, sh = crop.h || G.oceanImg.height;
+    var vc = G.viewportCrop;
+    var sx = vc.x, sy = vc.y, sw = vc.w, sh = vc.h;
     // Ocean layer: satellite image + blue tint for tile-matching ocean color.
-    // This provides smooth pixel-level ocean coloring under the land layer,
-    // so game tiles don't need hard-edged fills that clash with smooth coastlines.
     G.octx.drawImage(G.oceanImg, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
     // Blue tint (source-atop keeps ocean boundary)
     G.octx.globalCompositeOperation = 'source-atop';
@@ -118,13 +115,10 @@
   };
 
   // Clip game canvas to ocean shape — removes tile artifacts on land/islands.
-  // Uses destination-in with ocean image: keeps game pixels only where ocean is opaque.
   G.clipToOcean = function () {
-    var crop = G.crop;
-    var sx = crop.x, sy = crop.y;
-    var sw = crop.w || G.oceanImg.width, sh = crop.h || G.oceanImg.height;
+    var vc = G.viewportCrop;
     G.gctx.globalCompositeOperation = 'destination-in';
-    G.gctx.drawImage(G.oceanImg, sx, sy, sw, sh, 0, 0, G.gameCanvas.width, G.gameCanvas.height);
+    G.gctx.drawImage(G.oceanImg, vc.x, vc.y, vc.w, vc.h, 0, 0, G.gameCanvas.width, G.gameCanvas.height);
     G.gctx.globalCompositeOperation = 'source-over';
   };
 
@@ -155,7 +149,7 @@
     for (var r = 0; r < G.rows; r++) {
       for (var c = 0; c < G.cols; c++) {
         if (!G.oceanMask[r][c]) continue;
-        var x = c * CELL, y = r * CELL;
+        var x = G.gridOffsetX + c * CELL, y = G.gridOffsetY + r * CELL;
         ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + CELL + 0.5, y + 0.5);           // top
         ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + 0.5, y + CELL + 0.5);           // left
         ctx.moveTo(x + 0.5, y + CELL + 0.5); ctx.lineTo(x + CELL + 0.5, y + CELL + 0.5); // bottom
@@ -169,7 +163,7 @@
   // that clearRect may have erased.
   function drawCellGrid(ctx, r, c) {
     var CELL = G.CELL;
-    var x = c * CELL, y = r * CELL;
+    var x = G.gridOffsetX + c * CELL, y = G.gridOffsetY + r * CELL;
     ctx.strokeStyle = '#3a5272';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -193,7 +187,7 @@
 
   G.drawCell = function (r, c) {
     const CELL = G.CELL;
-    const x = c * CELL, y = r * CELL;
+    const x = G.gridOffsetX + c * CELL, y = G.gridOffsetY + r * CELL;
     const ctx = G.gctx;
     const ms = G.ms; // minesweeper state
 
@@ -331,13 +325,14 @@
       ctx.shadowBlur = options.shadowBlur || 0;
     }
     ctx.beginPath();
-    var firstX = path[0][1] * CELL + CELL / 2;
-    var firstY = path[0][0] * CELL + CELL / 2;
+    var ox = G.gridOffsetX, oy = G.gridOffsetY;
+    var firstX = ox + path[0][1] * CELL + CELL / 2;
+    var firstY = oy + path[0][0] * CELL + CELL / 2;
     ctx.moveTo(firstX, firstY);
 
     if (clamped >= 1) {
       for (var i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i][1] * CELL + CELL / 2, path[i][0] * CELL + CELL / 2);
+        ctx.lineTo(ox + path[i][1] * CELL + CELL / 2, oy + path[i][0] * CELL + CELL / 2);
       }
     } else {
       var segments = path.length - 1;
@@ -346,16 +341,16 @@
       var partial = scaled - wholeSegments;
 
       for (var j = 1; j <= wholeSegments; j++) {
-        ctx.lineTo(path[j][1] * CELL + CELL / 2, path[j][0] * CELL + CELL / 2);
+        ctx.lineTo(ox + path[j][1] * CELL + CELL / 2, oy + path[j][0] * CELL + CELL / 2);
       }
 
       if (wholeSegments < segments) {
         var from = path[wholeSegments];
         var to = path[wholeSegments + 1];
-        var fromX = from[1] * CELL + CELL / 2;
-        var fromY = from[0] * CELL + CELL / 2;
-        var toX = to[1] * CELL + CELL / 2;
-        var toY = to[0] * CELL + CELL / 2;
+        var fromX = ox + from[1] * CELL + CELL / 2;
+        var fromY = oy + from[0] * CELL + CELL / 2;
+        var toX = ox + to[1] * CELL + CELL / 2;
+        var toY = oy + to[0] * CELL + CELL / 2;
         ctx.lineTo(fromX + (toX - fromX) * partial, fromY + (toY - fromY) * partial);
       }
     }

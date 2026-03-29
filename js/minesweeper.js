@@ -183,9 +183,10 @@
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
 
     ms.introActive = true;
-    var startX = edges.entryCol === G.cols - 1 ? (G.cols + 0.8) * G.CELL : -G.CELL * 1.8;
-    var targetX = center[1] * G.CELL + G.CELL / 2;
-    var targetY = center[0] * G.CELL + G.CELL / 2;
+    var ox = G.gridOffsetX, oy = G.gridOffsetY;
+    var startX = edges.entryCol === G.cols - 1 ? ox + (G.cols + 0.8) * G.CELL : ox - G.CELL * 1.8;
+    var targetX = ox + center[1] * G.CELL + G.CELL / 2;
+    var targetY = oy + center[0] * G.CELL + G.CELL / 2;
     var startTime = performance.now();
     var duration = 650;
 
@@ -212,8 +213,8 @@
     var center = G.findEntryFootholdCenter();
     if (!center || !G.sctx || !G.activeShip) return;
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
-    var x = center[1] * G.CELL + G.CELL / 2;
-    var y = center[0] * G.CELL + G.CELL / 2;
+    var x = G.gridOffsetX + center[1] * G.CELL + G.CELL / 2;
+    var y = G.gridOffsetY + center[0] * G.CELL + G.CELL / 2;
     var angle = edges.entryCol === G.cols - 1 ? Math.PI : 0;
     G.drawShip(x, y, angle);
   };

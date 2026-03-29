@@ -201,23 +201,22 @@
 
   // Interpolated ship pixel position — shared by collision, click handler, and renderer
   function getShipPixelPos(t) {
+    var ox = G.gridOffsetX, oy = G.gridOffsetY;
     if (t.entryOffset > 0 && t.path && t.path.length) {
       var firstCell = t.path[0];
-      var entryPx = firstCell[1] * G.CELL + G.CELL / 2;
-      var entryPy = firstCell[0] * G.CELL + G.CELL / 2;
+      var entryPx = ox + firstCell[1] * G.CELL + G.CELL / 2;
+      var entryPy = oy + firstCell[0] * G.CELL + G.CELL / 2;
       var backDist = t.entryOffset * G.CELL;
       entryPx -= Math.cos(t.shipAngle) * backDist;
       entryPy -= Math.sin(t.shipAngle) * backDist;
       return { x: entryPx, y: entryPy };
     }
 
-    // If sailing off-screen, extrapolate beyond the last path cell
     if (t.sailingOff) {
       var lastIdx = t.path.length - 1;
       var lastCell = t.path[lastIdx];
-      var px = lastCell[1] * G.CELL + G.CELL / 2;
-      var py = lastCell[0] * G.CELL + G.CELL / 2;
-      // Use ship angle to extrapolate direction
+      var px = ox + lastCell[1] * G.CELL + G.CELL / 2;
+      var py = oy + lastCell[0] * G.CELL + G.CELL / 2;
       var offDist = (t.sailOffAccum || 0) * G.CELL;
       px += Math.cos(t.shipAngle) * offDist;
       py += Math.sin(t.shipAngle) * offDist;
@@ -225,24 +224,22 @@
     }
 
     var cell = t.path[t.shipPos];
-    var px = cell[1] * G.CELL + G.CELL / 2;
-    var py = cell[0] * G.CELL + G.CELL / 2;
+    var px = ox + cell[1] * G.CELL + G.CELL / 2;
+    var py = oy + cell[0] * G.CELL + G.CELL / 2;
     if (t.moveAccum > 0) {
       var fi = Math.min(t.shipPos + 1, t.path.length - 1);
       if (fi !== t.shipPos) {
-        px += (t.path[fi][1] * G.CELL + G.CELL / 2 - px) * t.moveAccum;
-        py += (t.path[fi][0] * G.CELL + G.CELL / 2 - py) * t.moveAccum;
+        px += (ox + t.path[fi][1] * G.CELL + G.CELL / 2 - px) * t.moveAccum;
+        py += (oy + t.path[fi][0] * G.CELL + G.CELL / 2 - py) * t.moveAccum;
       } else {
-        // Past the final route cell, keep drifting along the current heading
-        // instead of appearing to pause on the endpoint.
         px += Math.cos(t.shipAngle) * t.moveAccum * G.CELL;
         py += Math.sin(t.shipAngle) * t.moveAccum * G.CELL;
       }
     } else if (t.moveAccum < 0) {
       var bi = Math.max(t.shipPos - 1, 0);
       if (bi !== t.shipPos) {
-        px += (t.path[bi][1] * G.CELL + G.CELL / 2 - px) * (-t.moveAccum);
-        py += (t.path[bi][0] * G.CELL + G.CELL / 2 - py) * (-t.moveAccum);
+        px += (ox + t.path[bi][1] * G.CELL + G.CELL / 2 - px) * (-t.moveAccum);
+        py += (oy + t.path[bi][0] * G.CELL + G.CELL / 2 - py) * (-t.moveAccum);
       }
     }
     return { x: px, y: py };
@@ -388,12 +385,13 @@
         t.missileTimer = 0;
 
         // Pick a spawn cell that's far enough from the ship
-        var shipPxSpawn = t.path[t.shipPos][1] * G.CELL + G.CELL / 2;
-        var shipPySpawn = t.path[t.shipPos][0] * G.CELL + G.CELL / 2;
+        var _ox = G.gridOffsetX, _oy = G.gridOffsetY;
+        var shipPxSpawn = _ox + t.path[t.shipPos][1] * G.CELL + G.CELL / 2;
+        var shipPySpawn = _oy + t.path[t.shipPos][0] * G.CELL + G.CELL / 2;
         var candidates = [];
         for (var ci = 0; ci < t.landEdgeCells.length; ci++) {
           var ec = t.landEdgeCells[ci];
-          var ex = ec[1] * G.CELL + G.CELL / 2, ey = ec[0] * G.CELL + G.CELL / 2;
+          var ex = _ox + ec[1] * G.CELL + G.CELL / 2, ey = _oy + ec[0] * G.CELL + G.CELL / 2;
           var ed = (ex - shipPxSpawn) * (ex - shipPxSpawn) + (ey - shipPySpawn) * (ey - shipPySpawn);
           var minDist = MIN_MISSILE_SPAWN_DIST_CELLS * G.CELL;
           if (ed >= minDist * minDist) candidates.push(ec);
@@ -403,19 +401,19 @@
         } else {
           var spawn = candidates[Math.floor(Math.random() * candidates.length)];
           var sr = spawn[0], sc = spawn[1];
-          var spawnX = sc * G.CELL + G.CELL / 2;
-          var spawnY = sr * G.CELL + G.CELL / 2;
+          var spawnX = _ox + sc * G.CELL + G.CELL / 2;
+          var spawnY = _oy + sr * G.CELL + G.CELL / 2;
           var missileSpeed = cfg.missileSpeed * G.CELL * (0.4 + 0.6 * ramp);
 
           var curR = t.path[t.shipPos][0], curC = t.path[t.shipPos][1];
-          var curX = curC * G.CELL + G.CELL / 2, curY = curR * G.CELL + G.CELL / 2;
+          var curX = _ox + curC * G.CELL + G.CELL / 2, curY = _oy + curR * G.CELL + G.CELL / 2;
           var roughDist = Math.sqrt((curX - spawnX) * (curX - spawnX) + (curY - spawnY) * (curY - spawnY));
           var flightTime = roughDist / missileSpeed;
           var leadCells = Math.round(cfg.speed * t.shipSpeed * flightTime);
           var leadIdx = Math.min(Math.max(0, t.shipPos + leadCells), t.path.length - 1);
           var tr = t.path[leadIdx][0], tc = t.path[leadIdx][1];
-          var targetX = tc * G.CELL + G.CELL / 2;
-          var targetY = tr * G.CELL + G.CELL / 2;
+          var targetX = _ox + tc * G.CELL + G.CELL / 2;
+          var targetY = _oy + tr * G.CELL + G.CELL / 2;
 
           var dx = targetX - spawnX;
           var dy = targetY - spawnY;
