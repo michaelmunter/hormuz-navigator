@@ -112,6 +112,12 @@ function createElement(tagName = 'div') {
 function createRuntime(options = {}) {
   const elements = new Map();
   const documentListeners = new Map();
+  const hostname = options.hostname || '';
+  const location = {
+    hostname,
+    origin: hostname ? 'http://' + hostname : '',
+    href: hostname ? 'http://' + hostname + '/' : ''
+  };
 
   function getOrCreateElement(id) {
     if (!elements.has(id)) elements.set(id, createElement(id.indexOf('Canvas') !== -1 ? 'canvas' : 'div'));
@@ -158,15 +164,25 @@ function createRuntime(options = {}) {
     console,
     Math,
     Uint8ClampedArray,
-    window: { Game: {}, innerWidth: 1280, innerHeight: 720 },
+    window: { Game: {}, innerWidth: 1280, innerHeight: 720, location },
     document,
     Image: FakeImage,
+    location,
     localStorage: {
       getItem(key) { return localStorageStore.has(key) ? localStorageStore.get(key) : null; },
       setItem(key, value) { localStorageStore.set(key, String(value)); },
       removeItem(key) { localStorageStore.delete(key); }
     },
-    navigator: { serviceWorker: { register() { return Promise.resolve(); } } },
+    navigator: {
+      serviceWorker: {
+        register() { return Promise.resolve(); },
+        getRegistrations() { return Promise.resolve([]); }
+      }
+    },
+    caches: {
+      keys() { return Promise.resolve([]); },
+      delete() { return Promise.resolve(true); }
+    },
     performance: { now() { return 0; } },
     requestAnimationFrame() { return 1; },
     cancelAnimationFrame() {},
@@ -179,6 +195,8 @@ function createRuntime(options = {}) {
   context.window.document = document;
   context.window.navigator = context.navigator;
   context.window.localStorage = context.localStorage;
+  context.window.location = context.location;
+  context.window.caches = context.caches;
   context.window.performance = context.performance;
   context.window.requestAnimationFrame = context.requestAnimationFrame;
   context.window.cancelAnimationFrame = context.cancelAnimationFrame;
@@ -256,6 +274,20 @@ describe('production map logic', () => {
     assert.ok(path);
     assert.equal(path[0][1], 4);
     assert.equal(path[path.length - 1][1], 0);
+  });
+
+  it('keeps board crop and viewport framing as separate controls', () => {
+    const { G } = createRuntime();
+    G.getPortViewportFraming = function () {
+      return { panX: 25, panY: -40 };
+    };
+
+    const framed = G.applyViewportFraming({ x: 100, y: 200, w: 300, h: 400 });
+
+    assert.equal(framed.x, 125);
+    assert.equal(framed.y, 160);
+    assert.equal(framed.w, 300);
+    assert.equal(framed.h, 400);
   });
 
   it('prefers a straighter transit route over a zigzag with only slight clearance gains', () => {
@@ -399,6 +431,48 @@ describe('production map logic', () => {
     assert.ok(revealedCount <= 24);
     assert.ok(ms.mineCount > 0);
     assert.equal(G.hasPath(ms.mines), true);
+  });
+
+  it('rejects starter openings whose deterministic chain reveals too much of the board', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(7, 7, true));
+    G.drawCell = function () {};
+    const ms = {
+      mines: makeGrid(7, 7, false),
+      grid: makeGrid(7, 7, 0),
+      revealed: makeGrid(7, 7, false),
+      flagged: makeGrid(7, 7, false),
+      mineCount: 0,
+      flagCount: 0,
+      entryFootholdProfile: {
+        rowDepths: { '-1': 1, '0': 2, '1': 1 },
+        maxRevealCells: 12,
+        maxInfoReveals: 1
+      }
+    };
+    G.ms = ms;
+    G.findEntryFootholdCenter = function () {
+      return [3, 0];
+    };
+
+    G.computeNumbers(ms);
+    G.revealEntryFoothold(ms);
+
+    const metrics = G.getStarterOpeningMetrics(ms);
+    assert.ok(metrics.totalReachCount > 18);
+    assert.equal(G.isStarterOpeningAcceptable(ms), false);
+  });
+
+  it('enables dev defaults on localhost', () => {
+    const { G } = createRuntime({ hostname: 'localhost' });
+
+    assert.equal(G.devFlags.enabled, true);
+    assert.equal(G.devFlags.disablePersistence, true);
+    assert.equal(G.devFlags.disableServiceWorker, true);
+    assert.equal(G.devFlags.hotkeys, true);
+    assert.equal(G.devFlags.revealMines, false);
+    assert.equal(G.devFlags.skipMinesweeper, false);
+    assert.equal(G.devFlags.skipTransit, false);
   });
 
   it('does not apply first-click safety after the starter opening is already revealed', () => {

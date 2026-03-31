@@ -391,6 +391,9 @@
       w: canvasW * scaleX,
       h: canvasH * scaleY
     };
+    if (G.applyViewportFraming) {
+      G.viewportCrop = G.applyViewportFraming(G.viewportCrop);
+    }
 
     G.sizeCanvases(canvasW, canvasH);
     G.buildOceanMask(canvasW, canvasH);
@@ -589,6 +592,11 @@
           G.updateCrewActions();
           G.drawBoard();
           G.updateMapStageCard();
+          if (G.devFlags && G.devFlags.skipMinesweeper) {
+            setTimeout(function () {
+              G.devCompleteMinesweeper();
+            }, 0);
+          }
           break;
 
         case "transit_fwd":
@@ -608,6 +616,11 @@
           G.updateCrewActions();
           G.drawBoard();
           G.updateMapStageCard();
+          if (G.devFlags && G.devFlags.skipMinesweeper) {
+            setTimeout(function () {
+              G.devCompleteMinesweeper();
+            }, 0);
+          }
           break;
 
         case "transit_ret":
@@ -1293,18 +1306,7 @@
   };
 
   if ("serviceWorker" in navigator) {
-    var hostname =
-      (typeof window !== "undefined" &&
-        window.location &&
-        window.location.hostname) ||
-      (typeof location !== "undefined" && location.hostname) ||
-      "";
-    var isLocalDevHost =
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "::1";
-
-    if (isLocalDevHost) {
+    if (G.devFlags && G.devFlags.disableServiceWorker) {
       navigator.serviceWorker.getRegistrations().then(function (regs) {
         regs.forEach(function (reg) {
           reg.unregister();
@@ -1321,6 +1323,38 @@
       navigator.serviceWorker.register("sw.js").catch(function () {});
     }
   }
+
+  G.restartCurrentMinefield = function () {
+    if (G.state !== "MINESWEEPER") return;
+    G.initBoard(G.getMapTier());
+    G.initMinesweeper(G.getDifficulty(G.player.turn).mineRatio);
+    G.renderTacticalCrewBar();
+    G.updateCrewActions();
+    G.drawBoard();
+  };
+
+  G.devCompleteMinesweeper = function () {
+    if (G.state !== "MINESWEEPER" || !G.ms || G.ms.gameOver) return false;
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (G.oceanMask[r][c] && !G.ms.mines[r][c]) G.ms.revealed[r][c] = true;
+      }
+    }
+    G.drawBoard();
+    G.onMinesweeperWin();
+    return true;
+  };
+
+  G.devSkipCurrentPhase = function () {
+    if (G.state === "MINESWEEPER") return G.devCompleteMinesweeper();
+    if (
+      (G.state === "TRANSIT_FORWARD" || G.state === "TRANSIT_RETURN") &&
+      G.devCompleteTransit
+    ) {
+      return G.devCompleteTransit();
+    }
+    return false;
+  };
 
   // Test mode
   G.startTestMode = function () {
@@ -2077,6 +2111,19 @@
   window.showHelp = G.showHelp;
   window.startTestMode = function () {
     G.startTestMode();
+  };
+  window.toggleDevMineReveal = function () {
+    if (!G.setDevFlags) return false;
+    var next = !G.devFlags.revealMines;
+    G.setDevFlags({ revealMines: next });
+    if (G.state === "MINESWEEPER") G.drawBoard();
+    return next;
+  };
+  window.restartMinefield = function () {
+    G.restartCurrentMinefield();
+  };
+  window.skipCurrentPhase = function () {
+    return G.devSkipCurrentPhase();
   };
   window.goAgain = function () {
     G.goAgain();

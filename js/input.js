@@ -220,6 +220,31 @@
 
     // Keyboard
     document.addEventListener('keydown', function (e) {
+      if (G.devFlags && G.devFlags.hotkeys && e.shiftKey) {
+        if (e.key === 'T' || e.key === 't') {
+          G.startTestMode();
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'R' || e.key === 'r') {
+          if (G.restartCurrentMinefield) G.restartCurrentMinefield();
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'M' || e.key === 'm') {
+          if (G.setDevFlags) {
+            G.setDevFlags({ revealMines: !G.devFlags.revealMines });
+            if (G.state === 'MINESWEEPER') G.drawBoard();
+          }
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'X' || e.key === 'x') {
+          if (G.devSkipCurrentPhase) G.devSkipCurrentPhase();
+          e.preventDefault();
+          return;
+        }
+      }
       if (G.state === 'TRANSIT_FORWARD' || G.state === 'TRANSIT_RETURN') {
         G.handleTransitKey(e.key);
         if (['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S', ' '].indexOf(e.key) !== -1) {

@@ -3,7 +3,7 @@
   const G = window.Game;
   const ENTRY_MAX_REVEAL_CELLS = 24;
   const ENTRY_MAX_CONTAINMENT_MINES = 4;
-  const ENTRY_CONTAINMENT_CANDIDATE_LIMIT = 12;
+  const ENTRY_CONTAINMENT_CANDIDATE_LIMIT = 18;
   const ENTRY_MAX_INFO_REVEALS = 2;
   const ENTRY_OPENING_ATTEMPTS = 10;
   const ENTRY_MIN_SAFE_PROBES = 2;
@@ -382,9 +382,49 @@
     ms.fadingMine = null;
   }
 
+  function countRevealedCells(revealedState) {
+    var count = 0;
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (revealedState[r][c] === true) count++;
+      }
+    }
+    return count;
+  }
+
+  function collectRevealedCells(revealedState) {
+    var cells = [];
+    for (var r = 0; r < G.rows; r++) {
+      for (var c = 0; c < G.cols; c++) {
+        if (revealedState[r][c] === true) cells.push([r, c]);
+      }
+    }
+    return cells;
+  }
+
+  function buildRevealedState(cells) {
+    var revealedState = Array.from({ length: G.rows }, function () {
+      return Array(G.cols).fill(false);
+    });
+    for (var i = 0; i < cells.length; i++) {
+      revealedState[cells[i][0]][cells[i][1]] = true;
+    }
+    return revealedState;
+  }
+
+  function getStarterOpeningCaps(ms) {
+    var tier = G.getMapTier ? G.getMapTier() : 0;
+    var maxRevealCells = (ms.entryFootholdProfile && ms.entryFootholdProfile.maxRevealCells) || ENTRY_MAX_REVEAL_CELLS;
+    return {
+      maxRevealCells: maxRevealCells,
+      maxTotalReachCells: maxRevealCells + 6 + Math.min(10, tier * 2)
+    };
+  }
+
   G.generateStarterOpening = function (oceanCells, ms, mineRatio) {
     var targetMineCount = Math.floor(oceanCells.length * mineRatio);
     var accepted = false;
+    var lastMetrics = null;
 
     for (var attempt = 0; attempt < ENTRY_OPENING_ATTEMPTS; attempt++) {
       resetMinefieldArrays(ms);
@@ -397,6 +437,18 @@
       G.computeNumbers(ms);
       G.containEntryFootholdReveal(ms);
       G.revealEntryFoothold(ms);
+      lastMetrics = G.getStarterOpeningMetrics(ms);
+
+      if (G.devFlags && G.devFlags.logStarterOpenings && typeof console !== 'undefined' && console.debug) {
+        console.debug('starter-opening', {
+          attempt: attempt + 1,
+          accepted: G.isStarterOpeningAcceptable(ms),
+          revealed: lastMetrics.revealedCount,
+          deterministicExtra: lastMetrics.deterministicExtraRevealCount,
+          totalReach: lastMetrics.totalReachCount,
+          mineCount: ms.mineCount
+        });
+      }
 
       if (G.isStarterOpeningAcceptable(ms)) {
         accepted = true;
@@ -406,6 +458,9 @@
 
     if (!accepted) {
       G.ensureStarterIntel(ms);
+      if (G.devFlags && G.devFlags.logStarterOpenings && typeof console !== 'undefined' && console.warn) {
+        console.warn('starter-opening fallback', lastMetrics || G.getStarterOpeningMetrics(ms));
+      }
     }
   };
 
@@ -515,21 +570,87 @@
     return revealed;
   }
 
-  function getContainmentCandidates(ms, revealedCells, center) {
-    var zeroCandidates = [];
-    var fallbackCandidates = [];
+  function simulateDeterministicExpansionFromState(ms, revealedState, flaggedState) {
+    var initialRevealed = countRevealedCells(revealedState);
+    var totalRevealed = initialRevealed;
+
+    function revealSimulated(r, c) {
+      if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) return;
+      if (!G.oceanMask[r][c] || revealedState[r][c] || flaggedState[r][c]) return;
+      revealedState[r][c] = true;
+      totalRevealed++;
+      if (ms.grid[r][c] === 0 && !ms.mines[r][c]) {
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            revealSimulated(r + dr, c + dc);
+          }
+        }
+      }
+    }
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      var probes = getDeterministicSafeProbesForState(ms, revealedState, flaggedState);
+      for (var i = 0; i < probes.length; i++) {
+        var before = totalRevealed;
+        revealSimulated(probes[i][0], probes[i][1]);
+        if (totalRevealed > before) changed = true;
+      }
+    }
+
+    return {
+      initialRevealCount: initialRevealed,
+      totalReachCount: totalRevealed,
+      deterministicExtraRevealCount: totalRevealed - initialRevealed,
+      revealedState: revealedState,
+      revealedCells: collectRevealedCells(revealedState)
+    };
+  }
+
+  function simulateStarterOpeningSummary(ms, center) {
+    var initialRevealCells = collectSimulatedReveal(ms, center[0], center[1]);
+    var initialRevealState = buildRevealedState(initialRevealCells);
+    var flaggedState = Array.from({ length: G.rows }, function (_, r) {
+      return ms.flagged[r].slice();
+    });
+    var summary = simulateDeterministicExpansionFromState(ms, initialRevealState, flaggedState);
+    summary.initialRevealCells = initialRevealCells;
+    summary.initialRevealState = buildRevealedState(initialRevealCells);
+    return summary;
+  }
+
+  function scoreStarterOpeningSummary(summary, caps) {
+    var openingOverflow = Math.max(0, summary.initialRevealCount - caps.maxRevealCells);
+    var totalOverflow = Math.max(0, summary.totalReachCount - caps.maxTotalReachCells);
+    return (totalOverflow * 1000) + (openingOverflow * 100) + summary.totalReachCount;
+  }
+
+  function getContainmentCandidates(ms, summary, center) {
+    var chainedZeroCandidates = [];
+    var openingZeroCandidates = [];
+    var chainedFallbackCandidates = [];
+    var openingFallbackCandidates = [];
     var seen = Array.from({ length: G.rows }, function () {
       return Array(G.cols).fill(false);
     });
 
-    for (var i = 0; i < revealedCells.length; i++) {
-      var r = revealedCells[i][0];
-      var c = revealedCells[i][1];
+    for (var i = 0; i < summary.revealedCells.length; i++) {
+      var r = summary.revealedCells[i][0];
+      var c = summary.revealedCells[i][1];
       if (!G.oceanMask[r][c] || ms.mines[r][c] || isEntryFootholdCell(center, r, c)) continue;
       if (seen[r][c]) continue;
       seen[r][c] = true;
-      if (ms.grid[r][c] === 0) zeroCandidates.push([r, c]);
-      else fallbackCandidates.push([r, c]);
+      var cameFromOpening = summary.initialRevealState[r][c] === true;
+      if (ms.grid[r][c] === 0) {
+        if (cameFromOpening) openingZeroCandidates.push([r, c]);
+        else chainedZeroCandidates.push([r, c]);
+      } else if (cameFromOpening) {
+        openingFallbackCandidates.push([r, c]);
+      } else {
+        chainedFallbackCandidates.push([r, c]);
+      }
     }
 
     function sortByDistance(a, b) {
@@ -538,10 +659,13 @@
       return aDist - bDist;
     }
 
-    zeroCandidates.sort(sortByDistance);
-    fallbackCandidates.sort(sortByDistance);
+    chainedZeroCandidates.sort(sortByDistance);
+    openingZeroCandidates.sort(sortByDistance);
+    chainedFallbackCandidates.sort(sortByDistance);
+    openingFallbackCandidates.sort(sortByDistance);
 
-    return zeroCandidates.length ? zeroCandidates : fallbackCandidates;
+    return chainedZeroCandidates
+      .concat(openingZeroCandidates, chainedFallbackCandidates, openingFallbackCandidates);
   }
 
   function evaluateContainmentPlacement(ms, center, placement) {
@@ -557,39 +681,39 @@
     }
 
     G.computeNumbers(ms);
-    var revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
+    var summary = simulateStarterOpeningSummary(ms, center);
 
     for (var k = 0; k < placement.length; k++) {
       ms.mines[placement[k][0]][placement[k][1]] = false;
     }
 
-    return revealedCells;
+    return summary;
   }
 
-  function findBestContainmentPlacement(ms, revealedCells, center) {
-    var baseline = revealedCells.length;
-    var candidates = getContainmentCandidates(ms, revealedCells, center).slice(0, ENTRY_CONTAINMENT_CANDIDATE_LIMIT);
+  function findBestContainmentPlacement(ms, summary, center, caps) {
+    var baselineScore = scoreStarterOpeningSummary(summary, caps);
+    var candidates = getContainmentCandidates(ms, summary, center).slice(0, ENTRY_CONTAINMENT_CANDIDATE_LIMIT);
     var best = null;
-    var bestReduction = 0;
+    var bestScore = baselineScore;
 
     for (var i = 0; i < candidates.length; i++) {
       var singlePlacement = [candidates[i]];
-      var singleReveal = evaluateContainmentPlacement(ms, center, singlePlacement);
-      if (singleReveal) {
-        var singleReduction = baseline - singleReveal.length;
-        if (singleReduction > bestReduction) {
-          bestReduction = singleReduction;
+      var singleSummary = evaluateContainmentPlacement(ms, center, singlePlacement);
+      if (singleSummary) {
+        var singleScore = scoreStarterOpeningSummary(singleSummary, caps);
+        if (singleScore < bestScore) {
+          bestScore = singleScore;
           best = singlePlacement.slice();
         }
       }
 
       for (var j = i + 1; j < candidates.length; j++) {
         var pairPlacement = [candidates[i], candidates[j]];
-        var pairReveal = evaluateContainmentPlacement(ms, center, pairPlacement);
-        if (!pairReveal) continue;
-        var pairReduction = baseline - pairReveal.length;
-        if (pairReduction > bestReduction) {
-          bestReduction = pairReduction;
+        var pairSummary = evaluateContainmentPlacement(ms, center, pairPlacement);
+        if (!pairSummary) continue;
+        var pairScore = scoreStarterOpeningSummary(pairSummary, caps);
+        if (pairScore < bestScore) {
+          bestScore = pairScore;
           best = pairPlacement.slice();
         }
       }
@@ -608,15 +732,22 @@
     var center = G.findEntryFootholdCenter();
     if (!center) return;
 
-    var revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
-    var maxRevealCells = (ms.entryFootholdProfile && ms.entryFootholdProfile.maxRevealCells) || ENTRY_MAX_REVEAL_CELLS;
-    if (revealedCells.length <= maxRevealCells) return;
+    var caps = getStarterOpeningCaps(ms);
+    var summary = simulateStarterOpeningSummary(ms, center);
+    if (
+      summary.initialRevealCount <= caps.maxRevealCells &&
+      summary.totalReachCount <= caps.maxTotalReachCells
+    ) return;
 
     var added = 0;
     var guard = 0;
 
-    while (revealedCells.length > maxRevealCells && guard < 6 && added < ENTRY_MAX_CONTAINMENT_MINES) {
-      var bestPlacement = findBestContainmentPlacement(ms, revealedCells, center);
+    while (
+      (summary.initialRevealCount > caps.maxRevealCells || summary.totalReachCount > caps.maxTotalReachCells) &&
+      guard < 6 &&
+      added < ENTRY_MAX_CONTAINMENT_MINES
+    ) {
+      var bestPlacement = findBestContainmentPlacement(ms, summary, center, caps);
       if (!bestPlacement || !bestPlacement.length) break;
       var remainingBudget = ENTRY_MAX_CONTAINMENT_MINES - added;
       if (bestPlacement.length > remainingBudget) {
@@ -628,7 +759,7 @@
       ms.mineCount += bestPlacement.length;
       added += bestPlacement.length;
       G.computeNumbers(ms);
-      revealedCells = collectSimulatedReveal(ms, center[0], center[1]);
+      summary = simulateStarterOpeningSummary(ms, center);
       guard++;
     }
 
@@ -782,43 +913,7 @@
     var flaggedState = Array.from({ length: G.rows }, function (_, r) {
       return ms.flagged[r].slice();
     });
-    var initialRevealed = 0;
-    var totalRevealed = 0;
-
-    function revealSimulated(r, c) {
-      if (r < 0 || r >= G.rows || c < 0 || c >= G.cols) return;
-      if (!G.oceanMask[r][c] || revealedState[r][c] || flaggedState[r][c]) return;
-      revealedState[r][c] = true;
-      totalRevealed++;
-      if (ms.grid[r][c] === 0 && !ms.mines[r][c]) {
-        for (var dr = -1; dr <= 1; dr++) {
-          for (var dc = -1; dc <= 1; dc++) {
-            if (dr === 0 && dc === 0) continue;
-            revealSimulated(r + dr, c + dc);
-          }
-        }
-      }
-    }
-
-    for (var r = 0; r < G.rows; r++) {
-      for (var c = 0; c < G.cols; c++) {
-        if (revealedState[r][c] === true) initialRevealed++;
-      }
-    }
-    totalRevealed = initialRevealed;
-
-    var changed = true;
-    while (changed) {
-      changed = false;
-      var probes = getDeterministicSafeProbesForState(ms, revealedState, flaggedState);
-      for (var i = 0; i < probes.length; i++) {
-        var before = totalRevealed;
-        revealSimulated(probes[i][0], probes[i][1]);
-        if (totalRevealed > before) changed = true;
-      }
-    }
-
-    return totalRevealed - initialRevealed;
+    return simulateDeterministicExpansionFromState(ms, revealedState, flaggedState).deterministicExtraRevealCount;
   }
 
   function hasImmediateSafeFrontierProbe(ms) {
@@ -901,9 +996,27 @@
 
   G.isStarterOpeningAcceptable = function (ms) {
     if (!ms || !G.findEntryFootholdCenter()) return false;
+    var metrics = G.getStarterOpeningMetrics(ms);
+    var caps = getStarterOpeningCaps(ms);
     return getDeterministicStarterSafeProbes(ms).length >= ENTRY_MIN_SAFE_PROBES &&
-      simulateDeterministicStarterExpansion(ms) >= ENTRY_MIN_SAFE_EXPANSION &&
+      metrics.deterministicExtraRevealCount >= ENTRY_MIN_SAFE_EXPANSION &&
+      metrics.totalReachCount <= caps.maxTotalReachCells &&
       !hasInitialDeterministicMineFlag(ms);
+  };
+
+  G.getStarterOpeningMetrics = function (ms) {
+    if (!ms) return {
+      revealedCount: 0,
+      deterministicExtraRevealCount: 0,
+      totalReachCount: 0
+    };
+    var revealedCount = countRevealedCells(ms.revealed);
+    var deterministicExtraRevealCount = simulateDeterministicStarterExpansion(ms);
+    return {
+      revealedCount: revealedCount,
+      deterministicExtraRevealCount: deterministicExtraRevealCount,
+      totalReachCount: revealedCount + deterministicExtraRevealCount
+    };
   };
 
   G.canProbeCell = function (r, c) {

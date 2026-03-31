@@ -1,6 +1,72 @@
 // Map loading, ocean mask building, and pathfinding
 (function () {
   const G = (window.Game = window.Game || {});
+  var DEV_FLAGS_KEY = "hormuz_dev_flags";
+
+  function getHostname() {
+    if (typeof window !== "undefined" && window.location && window.location.hostname) {
+      return window.location.hostname;
+    }
+    if (typeof location !== "undefined" && location.hostname) {
+      return location.hostname;
+    }
+    return "";
+  }
+
+  G.isLocalDevHost = function () {
+    var hostname = getHostname();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  };
+
+  function readStoredDevFlags() {
+    try {
+      var raw = localStorage.getItem(DEV_FLAGS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  G.getDefaultDevFlags = function () {
+    var enabled = G.isLocalDevHost();
+    return {
+      enabled: enabled,
+      disablePersistence: enabled,
+      disableServiceWorker: enabled,
+      hotkeys: enabled,
+      revealMines: false,
+      skipMinesweeper: false,
+      skipTransit: false,
+      logStarterOpenings: enabled
+    };
+  };
+
+  G.devFlags = Object.assign(
+    {},
+    G.getDefaultDevFlags(),
+    readStoredDevFlags(),
+    (typeof window !== "undefined" && window.__HORMUZ_DEV_FLAGS__) || {}
+  );
+
+  G.setDevFlags = function (overrides) {
+    G.devFlags = Object.assign({}, G.devFlags || G.getDefaultDevFlags(), overrides || {});
+    if (typeof window !== "undefined") {
+      window.__HORMUZ_DEV_FLAGS__ = Object.assign({}, G.devFlags);
+      window.hormuzDevFlags = G.devFlags;
+    }
+    try {
+      localStorage.setItem(DEV_FLAGS_KEY, JSON.stringify(G.devFlags));
+    } catch (e) {}
+    return Object.assign({}, G.devFlags);
+  };
+
+  if (typeof window !== "undefined") {
+    window.__HORMUZ_DEV_FLAGS__ = Object.assign({}, G.devFlags);
+    window.hormuzDevFlags = G.devFlags;
+    window.setHormuzDevFlags = function (overrides) {
+      return G.setDevFlags(overrides);
+    };
+  }
 
   // Grid dimensions are driven by authored campaign/map tiers rather than
   // week-by-week time passing. Keep the on-screen board stable unless an
@@ -56,6 +122,8 @@
   var CROP_TIGHT = { cx: 3680, cy: 1740, w: 2175, h: 985 }; // strait
   var CROP_WIDE  = { cx: 2712, cy: 1512, w: 5423, h: 2450 }; // full Gulf
   var IMG_W = 5423, IMG_H = 3025;
+  G.MAP_IMAGE_W = IMG_W;
+  G.MAP_IMAGE_H = IMG_H;
 
   G.getCropForTier = function (tier) {
     var t = Math.min(Math.max(tier || 0, 0), 10) / 10;
@@ -70,7 +138,7 @@
   };
 
   G.getCropForContext = function (tier) {
-    var portCrop = G.getPortCameraCrop ? G.getPortCameraCrop() : null;
+    var portCrop = G.getPortBoardCrop ? G.getPortBoardCrop() : null;
     if (portCrop) {
       return {
         x: portCrop.x,
@@ -80,6 +148,26 @@
       };
     }
     return G.getCropForTier(tier);
+  };
+
+  G.applyViewportFraming = function (viewportCrop) {
+    var framing = G.getPortViewportFraming ? G.getPortViewportFraming() : null;
+    var panX = framing && typeof framing.panX === 'number' ? framing.panX : 0;
+    var panY = framing && typeof framing.panY === 'number' ? framing.panY : 0;
+    var framed = {
+      x: viewportCrop.x + panX,
+      y: viewportCrop.y + panY,
+      w: viewportCrop.w,
+      h: viewportCrop.h
+    };
+
+    if (framed.w < IMG_W) {
+      framed.x = Math.max(0, Math.min(IMG_W - framed.w, framed.x));
+    }
+    if (framed.h < IMG_H) {
+      framed.y = Math.max(0, Math.min(IMG_H - framed.h, framed.y));
+    }
+    return framed;
   };
 
   G.mapPointToCanvas = function (sourceX, sourceY, canvasW, canvasH) {

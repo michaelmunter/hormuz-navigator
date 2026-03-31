@@ -359,6 +359,13 @@
         G.drawFlag(x, y);
       }
 
+      if (G.devFlags && G.devFlags.revealMines && ms.mines[r][c] && !ms.flagged[r][c]) {
+        ctx.save();
+        ctx.globalAlpha = 0.38;
+        G.drawMine(x, y);
+        ctx.restore();
+      }
+
       if (ms.gameOver && ms.mines[r][c] && !ms.flagged[r][c]) {
         G.drawMine(x, y);
       }

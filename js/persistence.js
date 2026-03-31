@@ -7,6 +7,7 @@
   G.savedMinesweeper = null;
 
   G.savePlayer = function () {
+    if (G.devFlags && G.devFlags.disablePersistence) return;
     try {
       var stage =
         G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0
@@ -51,6 +52,12 @@
   };
 
   G.loadPlayer = function () {
+    if (G.devFlags && G.devFlags.disablePersistence) {
+      G.player = G.createFreshPlayer();
+      G.voyage = G.createFreshVoyage();
+      G.savedMinesweeper = null;
+      return;
+    }
     try {
       var raw = localStorage.getItem(SAVE_KEY);
       if (!raw) {
@@ -181,6 +188,7 @@
   };
 
   G.deleteSave = function () {
+    if (G.devFlags && G.devFlags.disablePersistence) return;
     try {
       localStorage.removeItem(SAVE_KEY);
     } catch (e) {}

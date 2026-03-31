@@ -329,6 +329,26 @@
     // Start game loop
     t.lastTime = performance.now();
     t.animFrame = requestAnimationFrame(G.transitLoop);
+
+    if (G.devFlags && G.devFlags.skipTransit) {
+      setTimeout(function () {
+        G.devCompleteTransit();
+      }, 0);
+    }
+  };
+
+  G.devCompleteTransit = function () {
+    var t = G.transit;
+    if (!t || !t.active || !t.path || !t.path.length || t.dead) return false;
+    t.startDelay = 0;
+    t.entryOffset = 0;
+    t.shipPos = t.path.length - 1;
+    t.moveAccum = 0;
+    if (t.path.length > 1) {
+      t.shipAngle = G.getTransitPathHeading(t.path, Math.max(0, t.path.length - 2), 1);
+    }
+    G.onTransitComplete();
+    return true;
   };
 
   G.transitLoop = function (now) {
