@@ -8,10 +8,13 @@
   G.MIN_GRID_COLS = 35;
   G.MAX_GRID_COLS = 45;
   G.GRID_RATIO = 5 / 3; // cols / rows ≈ 1.667, matches map aspect ratio
+  G.MAP_ZOOM_SCALE = 0.88; // 12% tighter than the raw authored crop sizes
 
   G.getGridSize = function (tier) {
     var t = Math.min(tier || 0, 10);
     var cols = Math.round(G.MIN_GRID_COLS + (G.MAX_GRID_COLS - G.MIN_GRID_COLS) * (t / 10));
+    var focusPort = G.getMapFocusPortName ? G.getMapFocusPortName() : null;
+    if (focusPort === 'Fujairah') cols = Math.max(18, cols - 8);
     var rows = Math.round(cols / G.GRID_RATIO);
     return { cols: cols, rows: rows };
   };
@@ -46,24 +49,71 @@
   // Computed by getCropForTier() based on campaign escalation.
   G.crop = { x: 0, y: 0, w: 0, h: 0 }; // 0 = use full image
 
-  // Map image is 3242x2401 (NASA Blue Marble crop of Persian Gulf).
+  // Map image is 5423x3025 (NASA Blue Marble crop of Persian Gulf).
   // Tier 0: tight on the Strait of Hormuz.
   // Tier 10: full Gulf from Kuwait to Gulf of Oman.
   // Interpolate linearly between these two endpoints.
-  var CROP_TIGHT = { cx: 2200, cy: 1380, w: 1300, h: 780 }; // strait
-  var CROP_WIDE  = { cx: 1621, cy: 1200, w: 3242, h: 1945 }; // full Gulf
-  var IMG_W = 3242, IMG_H = 2401;
+  var CROP_TIGHT = { cx: 3680, cy: 1740, w: 2175, h: 985 }; // strait
+  var CROP_WIDE  = { cx: 2712, cy: 1512, w: 5423, h: 2450 }; // full Gulf
+  var IMG_W = 5423, IMG_H = 3025;
 
   G.getCropForTier = function (tier) {
     var t = Math.min(Math.max(tier || 0, 0), 10) / 10;
     var cx = Math.round(CROP_TIGHT.cx + (CROP_WIDE.cx - CROP_TIGHT.cx) * t);
     var cy = Math.round(CROP_TIGHT.cy + (CROP_WIDE.cy - CROP_TIGHT.cy) * t);
-    var w  = Math.round(CROP_TIGHT.w  + (CROP_WIDE.w  - CROP_TIGHT.w)  * t);
-    var h  = Math.round(CROP_TIGHT.h  + (CROP_WIDE.h  - CROP_TIGHT.h)  * t);
+    var w  = Math.round((CROP_TIGHT.w  + (CROP_WIDE.w  - CROP_TIGHT.w)  * t) * G.MAP_ZOOM_SCALE);
+    var h  = Math.round((CROP_TIGHT.h  + (CROP_WIDE.h  - CROP_TIGHT.h)  * t) * G.MAP_ZOOM_SCALE);
     // Clamp to image bounds
     var x = Math.max(0, Math.min(IMG_W - w, cx - Math.floor(w / 2)));
     var y = Math.max(0, Math.min(IMG_H - h, cy - Math.floor(h / 2)));
     return { x: x, y: y, w: w, h: h };
+  };
+
+  G.getCropForContext = function (tier) {
+    var portCrop = G.getPortCameraCrop ? G.getPortCameraCrop() : null;
+    if (portCrop) {
+      return {
+        x: portCrop.x,
+        y: portCrop.y,
+        w: portCrop.w,
+        h: portCrop.h
+      };
+    }
+    return G.getCropForTier(tier);
+  };
+
+  G.mapPointToCanvas = function (sourceX, sourceY, canvasW, canvasH) {
+    var vc = G.viewportCrop;
+    if (!vc || !vc.w || !vc.h) return null;
+    return {
+      x: ((sourceX - vc.x) / vc.w) * canvasW,
+      y: ((sourceY - vc.y) / vc.h) * canvasH
+    };
+  };
+
+  G.getPortCanvasPoint = function (portName, canvasW, canvasH) {
+    if (!G.getPortByName || !G.mapPointToCanvas) return null;
+    var port = G.getPortByName(portName);
+    if (!port) return null;
+    return G.mapPointToCanvas(port.x, port.y, canvasW, canvasH);
+  };
+
+  G.getPortOffscreenPoint = function (portName, canvasW, canvasH, padding) {
+    var portPt = G.getPortCanvasPoint ? G.getPortCanvasPoint(portName, canvasW, canvasH) : null;
+    if (!portPt) return null;
+    var pad = padding || 48;
+    var distances = [
+      { edge: 'left', value: portPt.x },
+      { edge: 'right', value: canvasW - portPt.x },
+      { edge: 'top', value: portPt.y },
+      { edge: 'bottom', value: canvasH - portPt.y }
+    ];
+    distances.sort(function (a, b) { return a.value - b.value; });
+    var edge = distances[0].edge;
+    if (edge === 'left') return { x: -pad, y: portPt.y, edge: edge };
+    if (edge === 'right') return { x: canvasW + pad, y: portPt.y, edge: edge };
+    if (edge === 'top') return { x: portPt.x, y: -pad, edge: edge };
+    return { x: portPt.x, y: canvasH + pad, edge: edge };
   };
 
   // Sprite images (loaded in game.js)
@@ -79,8 +129,10 @@
   G.cols = 0;
   G.rows = 0;
   G.oceanMask = null;
-  var OCEAN_MASK_INSET_RATIO = 0.12;
-  var OCEAN_MASK_TRANSPARENCY_THRESHOLD = 0.92;
+  var OCEAN_MASK_OUTER_INSET_RATIO = 0.06;
+  var OCEAN_MASK_OUTER_TRANSPARENCY_THRESHOLD = 0.58;
+  var OCEAN_MASK_CENTER_RADIUS_RATIO = 0.16;
+  var OCEAN_MASK_CENTER_TRANSPARENCY_THRESHOLD = 0.98;
   var TRANSIT_DIRECTIONS = [
     [-1, -1], [-1, 0], [-1, 1],
     [0, -1],           [0, 1],
@@ -133,6 +185,113 @@
     return seeds;
   }
 
+  function getPortTargetRow(portName) {
+    if (!portName || !G.viewportCrop || !G.getPortByName) return null;
+    var port = G.getPortByName(portName);
+    if (!port) return null;
+    var normalizedY = (port.y - G.viewportCrop.y) / G.viewportCrop.h;
+    if (!isFinite(normalizedY)) return null;
+    return Math.max(0, Math.min(G.rows - 1, Math.round(normalizedY * (G.rows - 1))));
+  }
+
+  function getMinefieldTargetCells(direction) {
+    var dir = direction || (G.getMinefieldDirection ? G.getMinefieldDirection() : 'forward');
+    var targets = [];
+    var useAuthoredTargets = !!(G.getPortCameraCrop && G.getPortCameraCrop());
+
+    if (!useAuthoredTargets || dir !== 'return') {
+      var fallbackEdges = G.getMinefieldEdges ? G.getMinefieldEdges(dir) : { exitCol: G.cols - 1 };
+      var fallbackRows = getSortedEdgeRows(dir, fallbackEdges.exitCol);
+      for (var fi = 0; fi < fallbackRows.length; fi++) {
+        targets.push([fallbackRows[fi], fallbackEdges.exitCol]);
+      }
+      return targets;
+    }
+
+    if (dir === 'return' && G.findEntryFootholdCenter) {
+      var anchor = G.findEntryFootholdCenter('forward', false);
+      if (anchor) {
+        var localTargets = [
+          [anchor[0], anchor[1]],
+          [anchor[0] + 1, anchor[1]]
+        ];
+        for (var i = 0; i < localTargets.length; i++) {
+          var tr = localTargets[i][0], tc = localTargets[i][1];
+          if (tr >= 0 && tr < G.rows && tc >= 0 && tc < G.cols && G.oceanMask[tr][tc]) {
+            targets.push([tr, tc]);
+          }
+        }
+        if (targets.length) return targets;
+      }
+    }
+    return targets;
+  }
+  G.getMinefieldTargetCells = getMinefieldTargetCells;
+
+  function getSortedEdgeRows(direction, edgeCol) {
+    var rows = [];
+    for (var r = 0; r < G.rows; r++) {
+      if (G.oceanMask[r][edgeCol]) rows.push(r);
+    }
+    if (!rows.length) return rows;
+    var targetPort = G.getVoyageArrivalPortName ? G.getVoyageArrivalPortName(direction) : null;
+    var targetRow = getPortTargetRow(targetPort);
+    if (targetRow === null || targetRow === undefined) return rows;
+    rows.sort(function (a, b) {
+      return Math.abs(a - targetRow) - Math.abs(b - targetRow);
+    });
+    return rows;
+  }
+
+  function sampleTransparencyStats(readAlpha, startX, startY, endX, endY) {
+    var transparentCount = 0;
+    var total = 0;
+    for (var py = startY; py < endY; py++) {
+      for (var px = startX; px < endX; px++) {
+        if (readAlpha(px, py) < 128) transparentCount++;
+        total++;
+      }
+    }
+    return {
+      transparentCount: transparentCount,
+      total: total,
+      ratio: total ? transparentCount / total : 0
+    };
+  }
+
+  // A cell is playable when its number-safe center is effectively all water
+  // and the surrounding footprint still contains a healthy amount of water.
+  G.classifyOceanTile = function (readAlpha, startX, startY, cellSize) {
+    var outerInset = Math.max(1, Math.round(cellSize * OCEAN_MASK_OUTER_INSET_RATIO));
+    var outerStartX = startX + outerInset;
+    var outerStartY = startY + outerInset;
+    var outerEndX = startX + cellSize - outerInset;
+    var outerEndY = startY + cellSize - outerInset;
+    var outerStats = sampleTransparencyStats(
+      readAlpha,
+      outerStartX,
+      outerStartY,
+      outerEndX,
+      outerEndY
+    );
+    if (!outerStats.total || outerStats.ratio < OCEAN_MASK_OUTER_TRANSPARENCY_THRESHOLD) {
+      return false;
+    }
+
+    var centerRadius = Math.max(2, Math.round(cellSize * OCEAN_MASK_CENTER_RADIUS_RATIO));
+    var centerX = startX + Math.floor(cellSize / 2);
+    var centerY = startY + Math.floor(cellSize / 2);
+    var centerStats = sampleTransparencyStats(
+      readAlpha,
+      Math.max(startX, centerX - centerRadius),
+      Math.max(startY, centerY - centerRadius),
+      Math.min(startX + cellSize, centerX + centerRadius),
+      Math.min(startY + cellSize, centerY + centerRadius)
+    );
+    return centerStats.total > 0 &&
+      centerStats.ratio >= OCEAN_MASK_CENTER_TRANSPARENCY_THRESHOLD;
+  };
+
   // Build the ocean mask by sampling alpha from hormuz-land.png.
   // Where land is transparent (alpha < 128) = ocean cell.
   G.buildOceanMask = function (canvasW, canvasH) {
@@ -150,16 +309,12 @@
     for (var r = 0; r < G.rows; r++) {
       G.oceanMask[r] = [];
       for (var c = 0; c < G.cols; c++) {
-        var transparentCount = 0, total = 0;
-        var inset = Math.max(1, Math.round(G.CELL * OCEAN_MASK_INSET_RATIO));
-        for (var py = oy + r * G.CELL + inset; py < oy + (r + 1) * G.CELL - inset; py++) {
-          for (var px = ox + c * G.CELL + inset; px < ox + (c + 1) * G.CELL - inset; px++) {
-            var idx = (py * canvasW + px) * 4;
-            if (d[idx + 3] < 128) transparentCount++;
-            total++;
-          }
-        }
-        G.oceanMask[r][c] = transparentCount / total > OCEAN_MASK_TRANSPARENCY_THRESHOLD;
+        var startX = ox + c * G.CELL;
+        var startY = oy + r * G.CELL;
+        G.oceanMask[r][c] = G.classifyOceanTile(function (px, py) {
+          var idx = (py * canvasW + px) * 4;
+          return d[idx + 3];
+        }, startX, startY, G.CELL);
       }
     }
     // Post-process: remove isolated ocean cells (island tiles).
@@ -184,10 +339,13 @@
   // Check if a mine-free path exists from left to right through ocean
   G.hasPath = function (mines) {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
-    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { exitCol: cols - 1 };
+    var direction = G.getMinefieldDirection ? G.getMinefieldDirection() : 'forward';
+    var targetCells = getMinefieldTargetCells(direction);
+    var targetLookup = {};
+    for (var ti = 0; ti < targetCells.length; ti++) targetLookup[targetCells[ti][0] + ',' + targetCells[ti][1]] = true;
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const queue = [];
-    const seeds = getEntrySeedCells(function (r, c) { return !mines[r][c]; }, null, true);
+    const seeds = getEntrySeedCells(function (r, c) { return !mines[r][c]; }, direction, true);
     for (let i = 0; i < seeds.length; i++) {
       const r = seeds[i][0], c = seeds[i][1];
       queue.push([r, c]);
@@ -195,7 +353,7 @@
     }
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === edges.exitCol) return true;
+      if (targetLookup[r + ',' + c]) return true;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           if (dr === 0 && dc === 0) continue;
@@ -214,11 +372,14 @@
   // BFS through all ocean to find a carveable path (ignoring mines)
   G.findCarvePath = function () {
     const rows = G.rows, cols = G.cols;
-    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { exitCol: cols - 1 };
+    var direction = G.getMinefieldDirection ? G.getMinefieldDirection() : 'forward';
+    var targetCells = getMinefieldTargetCells(direction);
+    var targetLookup = {};
+    for (var ti = 0; ti < targetCells.length; ti++) targetLookup[targetCells[ti][0] + ',' + targetCells[ti][1]] = true;
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
     const queue = [];
-    const seeds = getEntrySeedCells(function () { return true; }, null, true);
+    const seeds = getEntrySeedCells(function () { return true; }, direction, true);
     for (let i = 0; i < seeds.length; i++) {
       const r = seeds[i][0], c = seeds[i][1];
       queue.push([r, c]);
@@ -226,7 +387,7 @@
     }
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === edges.exitCol) {
+      if (targetLookup[r + ',' + c]) {
         const path = [];
         let cur = [r, c];
         while (cur) { path.push(cur); cur = parent[cur[0]][cur[1]]; }
@@ -291,7 +452,9 @@
   // with coast clearance and turn smoothness as secondary biases.
   G.findRevealedPath = function (revealed, direction) {
     const rows = G.rows, cols = G.cols, oceanMask = G.oceanMask;
-    var edges = G.getMinefieldEdges ? G.getMinefieldEdges(direction) : { exitCol: cols - 1 };
+    var targetCells = getMinefieldTargetCells(direction);
+    var targetLookup = {};
+    for (var ti = 0; ti < targetCells.length; ti++) targetLookup[targetCells[ti][0] + ',' + targetCells[ti][1]] = true;
     if (!G.distanceMap) G.buildDistanceMap();
     const dm = G.distanceMap;
 
@@ -348,7 +511,7 @@
     while (heap.length > 0) {
       const [d, r, c, dirIdx] = heapPop();
       if (d > cost[r][c][dirIdx]) continue; // stale entry
-      if (c === edges.exitCol) {
+      if (targetLookup[r + ',' + c]) {
         bestEnd = [r, c, dirIdx];
         break;
       }

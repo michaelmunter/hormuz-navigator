@@ -41,14 +41,15 @@ is_warm = ((hue < 60) | (hue > 310)) & (brightness > 50)
 candidate = (is_dark_water | is_very_dark) & ~is_warm
 
 # --- Flood fill from known ocean points ---
-# Seed points in the middle of the Gulf (known ocean)
-# Image is 3242x2401. Gulf center roughly at various points.
+# Seed points in the middle of the Gulf (known ocean).
+# Proportional to image size so they work at any resolution.
 seeds = [
-    (h // 2, w // 3),          # mid-Gulf
-    (h // 2, w // 2),          # central
-    (int(h * 0.35), int(w * 0.15)),  # northwest Gulf
-    (int(h * 0.55), int(w * 0.6)),   # near strait
-    (int(h * 0.45), int(w * 0.8)),   # Gulf of Oman
+    (h // 2, w // 3),                 # mid-Gulf
+    (h // 2, w // 2),                 # central
+    (int(h * 0.30), int(w * 0.15)),   # northwest Gulf
+    (int(h * 0.55), int(w * 0.65)),   # near strait
+    (int(h * 0.45), int(w * 0.80)),   # Gulf of Oman
+    (int(h * 0.48), int(w * 0.90)),   # far east Gulf of Oman
 ]
 
 ocean_mask = np.zeros((h, w), dtype=bool)

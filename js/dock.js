@@ -281,16 +281,16 @@
   // --- Ship button & dropdown ---
   function renderShipButton() {
     var btn = document.getElementById('menuShipBtn');
-    var playerShip = G.getActivePlayerShip();
-    if (playerShip) {
-      var ship = playerShip.tierData;
-      var owned = playerShip.owned;
-      var damaged = owned.hp < ship.hp;
+    var displayShip = G.getDisplayedShip ? G.getDisplayedShip() : G.getActivePlayerShip();
+    if (displayShip) {
+      var ship = displayShip.tierData;
+      var hp = typeof displayShip.hp === 'number' ? displayShip.hp : ship.hp;
+      var maxHp = typeof displayShip.maxHp === 'number' ? displayShip.maxHp : ship.hp;
 
       // HP blocks
       var blocks = '';
       for (var i = 0; i < ship.hp; i++) {
-        blocks += '<div class="ship-hp-block ' + (i < owned.hp ? 'full' : 'empty') + '"></div>';
+        blocks += '<div class="ship-hp-block ' + (i < hp ? 'full' : 'empty') + '"></div>';
       }
 
       // Oil fill from voyage state
@@ -341,11 +341,13 @@
     var menu = document.getElementById('menuShipMenu');
     menu.innerHTML = '';
 
-    var playerShip = G.getActivePlayerShip();
+    var displayShip = G.getDisplayedShip ? G.getDisplayedShip() : G.getActivePlayerShip();
 
-    if (playerShip) {
-      var ship = playerShip.tierData;
-      var owned = playerShip.owned;
+    if (displayShip) {
+      var ship = displayShip.tierData;
+      var owned = displayShip.owned;
+      var hp = typeof displayShip.hp === 'number' ? displayShip.hp : ship.hp;
+      var maxHp = typeof displayShip.maxHp === 'number' ? displayShip.maxHp : ship.hp;
 
       // Ship info header
       var info = document.createElement('div');
@@ -353,12 +355,12 @@
       info.innerHTML =
         '<div class="ship-menu-name">' + ship.name + '</div>' +
         '<div class="ship-menu-stats">Cargo: ' + G.formatMoney(ship.cargoValue) +
-        ' | Crew: ' + ship.crewSlots.length + ' | HP: ' + owned.hp + '/' + ship.hp + '</div>';
+        ' | Crew: ' + ship.crewSlots.length + ' | HP: ' + hp + '/' + maxHp + '</div>';
       menu.appendChild(info);
 
       // Repair
-      if (owned.hp < ship.hp) {
-        var repairCost = G.getRepairCost(playerShip);
+      if (owned && hp < ship.hp) {
+        var repairCost = G.getRepairCost(displayShip);
         var canRepair = G.player.bank >= repairCost;
         var repairBtn = document.createElement('button');
         repairBtn.className = 'ship-menu-btn' + (canRepair ? '' : ' disabled');

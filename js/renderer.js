@@ -112,6 +112,57 @@
     G.octx.globalCompositeOperation = 'source-over';
     // Land layer on top — smooth coastline masks everything below
     G.lctx.drawImage(G.landImg, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+    if (G.drawHighlightedPorts) G.drawHighlightedPorts(canvasW, canvasH);
+  };
+
+  G.drawHighlightedPorts = function (canvasW, canvasH) {
+    if (!G.getHighlightedPorts || !G.mapPointToCanvas) return;
+    var ports = G.getHighlightedPorts();
+    if (!ports || !ports.length) return;
+    var ctx = G.lctx;
+    ctx.save();
+    for (var i = 0; i < ports.length; i++) {
+      var port = ports[i];
+      var pt = G.mapPointToCanvas(port.x, port.y, canvasW, canvasH);
+      if (!pt) continue;
+      var isOrigin =
+        G.voyage &&
+        G.voyage.contract &&
+        G.voyage.contract.origin === port.name;
+      var fill = isOrigin ? '#ffd16b' : '#ff746b';
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = 'rgba(20, 24, 36, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.font = '11px "Menlo", "Consolas", "Courier New", monospace';
+      var labelText = port.name;
+      var labelW = Math.ceil(ctx.measureText(labelText).width) + 16;
+      var labelH = 18;
+      var labelGap = 15;
+      var labelSide = port.labelSide === 'left' ? 'left' : 'right';
+      var boxX = labelSide === 'left'
+        ? Math.round(pt.x - labelGap - labelW)
+        : Math.round(pt.x + labelGap);
+      var boxY = Math.round(pt.y - labelH / 2);
+
+      ctx.fillStyle = 'rgba(14, 18, 30, 0.82)';
+      ctx.fillRect(boxX, boxY, labelW, labelH);
+      ctx.fillStyle = '#f5f0df';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(labelText, boxX + 8, pt.y);
+    }
+    ctx.restore();
   };
 
   // Clip game canvas to ocean shape — removes tile artifacts on land/islands.
@@ -140,7 +191,7 @@
         var angle = G.getTransitDockAngle ? G.getTransitDockAngle() : 0;
         var px = G.gridOffsetX + first[1] * CELL + CELL / 2;
         var py = G.gridOffsetY + first[0] * CELL + CELL / 2;
-        G.drawShip(px, py, angle);
+        G.drawShip(px, py, angle, 0.78);
       } else if (G.drawMinesweeperEntryShip) {
         G.drawMinesweeperEntryShip();
       }
@@ -194,6 +245,57 @@
     ctx.stroke();
   }
 
+  function getExitMarkerDirection(r, c) {
+    var direction = G.getMinefieldDirection ? G.getMinefieldDirection() : 'forward';
+    if (!G.oceanMask[r][c]) return null;
+    if (direction === 'return') {
+      if (!G.getMinefieldTargetCells) return null;
+      var targets = G.getMinefieldTargetCells(direction);
+      if (!targets || !targets.length) return null;
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i][0] !== r || targets[i][1] !== c) continue;
+        return i === 0 ? 'w' : 'nw';
+      }
+      return null;
+    }
+    if (!G.getMinefieldEdges) return null;
+    var edges = G.getMinefieldEdges();
+    if (r === G.rows - 1) return 'se';
+    if (c === edges.exitCol) return 'e';
+    return null;
+  }
+
+  function getExitMarkerColor(isRevealed) {
+    if (isRevealed) {
+      return '#4a679c';
+    }
+    return '#3a5272';
+  }
+
+  function drawExitMarker(ctx, x, y, cellSize, direction, color) {
+    if (!direction) return;
+    var cx = x + cellSize * 0.5;
+    var cy = y + cellSize * 0.5;
+    var size = cellSize * 0.18;
+    var angle = 0;
+    if (direction === 'w') angle = Math.PI;
+    else if (direction === 'se') angle = Math.PI / 4;
+    else if (direction === 'nw') angle = -3 * Math.PI / 4;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.strokeStyle = color || '#3a5272';
+    ctx.lineWidth = Math.max(1, cellSize * 0.055);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.55, -size * 0.82);
+    ctx.lineTo(size * 0.55, 0);
+    ctx.lineTo(-size * 0.55, size * 0.82);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   G.drawCell = function (r, c) {
     const CELL = G.CELL;
     const x = G.gridOffsetX + c * CELL, y = G.gridOffsetY + r * CELL;
@@ -210,6 +312,7 @@
       ctx.clearRect(x, y, CELL, CELL);
       ctx.fillStyle = 'rgba(80, 110, 170, 0.22)';
       ctx.fillRect(x, y, CELL, CELL);
+      drawExitMarker(ctx, x, y, CELL, getExitMarkerDirection(r, c), getExitMarkerColor(true));
 
       if (ms.revealed[r][c] === 'boom') {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
@@ -239,6 +342,7 @@
       ctx.clearRect(x, y, CELL, CELL);
       ctx.fillStyle = 'rgba(74, 103, 156, 0.055)';
       ctx.fillRect(x, y, CELL, CELL);
+      drawExitMarker(ctx, x, y, CELL, getExitMarkerDirection(r, c), getExitMarkerColor(false));
 
       // Hover highlight — subtle fill + border on unrevealed cells
       if (G.hoverCell && G.hoverCell.r === r && G.hoverCell.c === c && !ms.flagged[r][c]) {
@@ -386,23 +490,26 @@
   // Ship sprite has bow pointing UP (-π/2 direction).
   // shipAngle is the heading in radians (0 = rightward, π/2 = downward).
   // Size is derived from the image's aspect ratio, scaled to a fixed length in cells.
-  G.drawShipOnContext = function (ctx, px, py, shipAngle) {
+  G.drawShipOnContext = function (ctx, px, py, shipAngle, scale, alpha) {
     var CELL = G.CELL;
     var img = G.sprites.ship;
     if (!ctx || !img.complete || !img.naturalWidth) return;
+    var sizeScale = typeof scale === 'number' ? scale : 1;
+    var drawAlpha = typeof alpha === 'number' ? alpha : 1;
     var lengthCells = G.getShipLengthCells ? G.getShipLengthCells(G.activeShip) : 1.8;
-    var len = CELL * lengthCells;
+    var len = CELL * lengthCells * sizeScale;
     var beam = len * (img.naturalWidth / img.naturalHeight);
     ctx.save();
+    ctx.globalAlpha = drawAlpha;
     ctx.translate(px, py);
     ctx.rotate(shipAngle + Math.PI / 2);
     ctx.drawImage(img, -beam / 2, -len / 2, beam, len);
     ctx.restore();
   };
 
-  G.drawShip = function (px, py, shipAngle) {
+  G.drawShip = function (px, py, shipAngle, scale, alpha) {
     var ctx = G.sctx;
-    G.drawShipOnContext(ctx, px, py, shipAngle);
+    G.drawShipOnContext(ctx, px, py, shipAngle, scale, alpha);
   };
 
   // Ship destroyed — draw the ship at its last position with an explosion overlay
@@ -579,7 +686,12 @@
       shipPy = shipPos.y;
 
       if (!transit.dead) {
-        G.drawShip(shipPx, shipPy, transit.shipAngle);
+        G.drawShip(
+          shipPx,
+          shipPy,
+          transit.shipAngle,
+          G.getTransitShipScale ? G.getTransitShipScale() : 0.78
+        );
       }
     }
 

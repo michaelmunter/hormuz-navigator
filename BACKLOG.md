@@ -1,51 +1,13 @@
 # Hormuz Navigator — Backlog
 
-- **Multi-sector route clearing**
-  - Expand from one tactical sector to two or three linked sectors.
-  - Preserve whole-board readability rather than introducing camera movement.
-  - Transit should run continuously across all cleared sectors.
+## Destination port identity
 
-- **Swimmer dependency softening**
-  - Add future support systems that reduce total dependence on the Swimmer without removing risk.
-  - Likely candidates:
-    - sonar
-    - specialist support slot
-    - recon / mine-detection upgrade
+- Decide whether destination ports are:
+  - pure flavor labels, or
+  - mechanically distinct ports with different prices / risk / travel time
+- If they stay mostly cosmetic, simplify the presentation accordingly.
 
-- **Destination port identity**
-  - Decide whether destination ports are:
-    - pure flavor labels, or
-    - mechanically distinct ports with different prices / risk / travel time
-  - If they stay mostly cosmetic, simplify the presentation accordingly.
-
-## Later
-
-- **Port-side story/events**
-  - Add between-run events, rumors, and crew drama.
-  - Use them to support market flavor, crew flavor, and special opportunities.
-
-- **Market manipulation**
-  - If market play grows, prefer event- or crew-driven interaction over a generic wait button.
-  - Good candidates:
-    - hacker / broker-type crew
-    - port bar rumor system
-    - one-shot market nudges rather than passive camping
-
-- **Equipment / support systems**
-  - Add purchasable modules only when ship loss, crew roles, and economy make them meaningful.
-  - Equipment should reinforce role identity, not replace it.
-
-- **Shadow fleet / alternate routes**
-  - Only pursue this once the main Hormuz loop is stable.
-  - Treat it as a second campaign layer, not a premature content branch.
-
-## Cleanup
-
-- Remove stale comments and terminology that still imply the old scaling model.
-- Audit `GAME.md` and code comments whenever major systems change direction.
-- Remove dead compatibility code once the new flow is stable.
-
-## Implement achievements / unlockables
+## Achievements / unlockables
 
 ## Distribution
 
@@ -54,4 +16,21 @@
 - **Newgrounds / GameJolt** — community discovery
 - **CrazyGames / Poki** — only after the core loop and integration requirements are mature
 
-## Sound + music effects overhall
+## Sound + music effects overhaul
+
+## BUGFIXES
+
+single chevron placed in the middle probably look better.
+try the same color/opacity as the tile borders.
+top right corner chevron should go right as upwards would hit land.
+bottom right should be in middle (as rest should now).
+top row should be removed
+add extra bottom row (add 1-2 more if you think it'll work with smaller screens)
+all bottom row should be like the corner (it's the direction the ship would take)
+check the image. ship is located wrong. it should be on the tile to the right of the port, which should now be a corner tile. we might've agreed to something differently but if so, it looks wrong. we're clearing mines so the ship is in the water.
+ship teleports down when pathing. it shouldn't.
+transit help popup should show after map transitions.
+ship is now reversing animation when sailing backwards. i got no idea where this came from. it shouldn't. it turns with the path, but if you reverse, the ship should sail in "back gear".
+there's no drones. there should be fpv drone attacks.
+on reaching end of map, ship flies over the map to the left side. ships are not planes and shouldn't do this. it should fade out.
+on returning, we're now at the wrong map. we should use the same as before. the chevrons can be to the right of the port (pointing left) and down right (pointing up left).

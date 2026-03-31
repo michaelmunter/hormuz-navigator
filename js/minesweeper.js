@@ -179,45 +179,31 @@
 
   G.playMinesweeperIntro = function () {
     var ms = G.ms;
-    var center = G.findEntryFootholdCenter();
-    if (!center || !G.sctx || !G.activeShip) return;
+    ms.introActive = false;
+    G.drawMinesweeperEntryShip();
+  };
+
+  G.getMinesweeperEntryShipPose = function () {
+    if (!G.activeShip) return null;
+
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
+    var defaultAngle = edges.entryCol === G.cols - 1 ? Math.PI : 0;
+    var sizeScale = 0.78;
 
-    ms.introActive = true;
-    var ox = G.gridOffsetX, oy = G.gridOffsetY;
-    var startX = edges.entryCol === G.cols - 1 ? ox + (G.cols + 0.8) * G.CELL : ox - G.CELL * 1.8;
-    var targetX = ox + center[1] * G.CELL + G.CELL / 2;
-    var targetY = oy + center[0] * G.CELL + G.CELL / 2;
-    var startTime = performance.now();
-    var duration = 650;
-
-    function tick(now) {
-      var t = Math.min(1, (now - startTime) / duration);
-      var eased = 1 - Math.pow(1 - t, 3);
-      var x = startX + (targetX - startX) * eased;
-
-      G.sctx.clearRect(0, 0, G.spriteCanvas.width, G.spriteCanvas.height);
-      G.drawShip(x, targetY, 0);
-
-      if (t < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        ms.introActive = false;
-        G.drawMinesweeperEntryShip();
-      }
-    }
-
-    requestAnimationFrame(tick);
+    var center = G.findEntryFootholdCenter ? G.findEntryFootholdCenter() : null;
+    if (!center) return null;
+    return {
+      x: G.gridOffsetX + center[1] * G.CELL + G.CELL / 2,
+      y: G.gridOffsetY + center[0] * G.CELL + G.CELL / 2,
+      angle: defaultAngle,
+      scale: sizeScale
+    };
   };
 
   G.drawMinesweeperEntryShip = function () {
-    var center = G.findEntryFootholdCenter();
-    if (!center || !G.sctx || !G.activeShip) return;
-    var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0 };
-    var x = G.gridOffsetX + center[1] * G.CELL + G.CELL / 2;
-    var y = G.gridOffsetY + center[0] * G.CELL + G.CELL / 2;
-    var angle = edges.entryCol === G.cols - 1 ? Math.PI : 0;
-    G.drawShip(x, y, angle);
+    var pose = G.getMinesweeperEntryShipPose ? G.getMinesweeperEntryShipPose() : null;
+    if (!pose || !G.sctx || !G.activeShip) return;
+    G.drawShip(pose.x, pose.y, pose.angle, pose.scale);
   };
 
   G.placeMines = function (oceanCells, ms) {
@@ -297,18 +283,55 @@
     return stage && stage.id === 'mines_ret' ? 'return' : 'forward';
   };
 
+  function findOceanEdgeCol(fromLeft) {
+    if (!G.oceanMask) return fromLeft ? 0 : Math.max(0, G.cols - 1);
+    if (fromLeft) {
+      for (var c = 0; c < G.cols; c++) {
+        for (var r = 0; r < G.rows; r++) {
+          if (G.oceanMask[r][c]) return c;
+        }
+      }
+      return 0;
+    }
+    for (var c = G.cols - 1; c >= 0; c--) {
+      for (var r = 0; r < G.rows; r++) {
+        if (G.oceanMask[r][c]) return c;
+      }
+    }
+    return Math.max(0, G.cols - 1);
+  }
+
   G.getMinefieldEdges = function (direction) {
     var travelDirection = direction || G.getMinefieldDirection();
+    var leftOceanCol = findOceanEdgeCol(true);
+    var rightOceanCol = findOceanEdgeCol(false);
     if (travelDirection === 'return') {
-      return { entryCol: G.cols - 1, exitCol: 0, inwardStep: -1 };
+      return { entryCol: rightOceanCol, exitCol: leftOceanCol, inwardStep: -1 };
     }
-    return { entryCol: 0, exitCol: G.cols - 1, inwardStep: 1 };
+    return { entryCol: leftOceanCol, exitCol: rightOceanCol, inwardStep: 1 };
   };
 
-  G.findEntryFootholdCenter = function (direction) {
-    if (G.ms && G.ms.entryFootholdCenter) return G.ms.entryFootholdCenter;
+  G.findEntryFootholdCenter = function (direction, useCachedState) {
+    if (useCachedState !== false && G.ms && G.ms.entryFootholdCenter) return G.ms.entryFootholdCenter;
     var entryCol = G.getMinefieldEdges ? G.getMinefieldEdges(direction).entryCol : 0;
     var targetRow = Math.floor(G.rows / 2);
+    if (
+      G.viewportCrop &&
+      G.getVoyageDeparturePortName &&
+      G.getPortByName
+    ) {
+      var departurePortName = G.getVoyageDeparturePortName(direction || G.getMinefieldDirection());
+      var departurePort = G.getPortByName(departurePortName);
+      if (departurePort) {
+        var normalizedY = (departurePort.y - G.viewportCrop.y) / G.viewportCrop.h;
+        if (normalizedY >= 0 && normalizedY <= 1) {
+          targetRow = Math.max(0, Math.min(G.rows - 1, Math.round(normalizedY * (G.rows - 1))));
+          if (typeof departurePort.entryRowBias === 'number') {
+            targetRow = Math.max(0, Math.min(G.rows - 1, targetRow + departurePort.entryRowBias));
+          }
+        }
+      }
+    }
     for (var offset = 0; offset < G.rows; offset++) {
       var up = targetRow - offset;
       if (up >= 0 && G.oceanMask[up][entryCol]) return [up, entryCol];
@@ -319,13 +342,7 @@
   };
 
   G.pickEntryFootholdCenter = function (direction) {
-    var entryCol = G.getMinefieldEdges ? G.getMinefieldEdges(direction).entryCol : 0;
-    var candidates = [];
-    for (var r = 0; r < G.rows; r++) {
-      if (G.oceanMask[r][entryCol]) candidates.push([r, entryCol]);
-    }
-    if (!candidates.length) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return G.findEntryFootholdCenter(direction);
   };
 
   function cloneRowDepths(rowDepths) {
@@ -429,6 +446,19 @@
 
     if (removed > 0) {
       ms.mineCount -= removed;
+      document.getElementById('mineCounter').textContent = String(ms.mineCount).padStart(3, '0');
+    }
+
+    if (G.getMinefieldDirection && G.getMinefieldDirection() === 'return' && G.getMinefieldTargetCells) {
+      var targets = G.getMinefieldTargetCells('return');
+      for (var ti = 0; ti < targets.length; ti++) {
+        var tr = targets[ti][0];
+        var tc = targets[ti][1];
+        if (ms.mines[tr][tc]) {
+          ms.mines[tr][tc] = false;
+          ms.mineCount--;
+        }
+      }
       document.getElementById('mineCounter').textContent = String(ms.mineCount).padStart(3, '0');
     }
 
@@ -915,6 +945,11 @@
     const ms = G.ms;
     const rows = G.rows, cols = G.cols;
     var edges = G.getMinefieldEdges ? G.getMinefieldEdges() : { entryCol: 0, exitCol: cols - 1 };
+    var targetCells = G.getMinefieldTargetCells ? G.getMinefieldTargetCells() : [];
+    var targetLookup = {};
+    for (var ti = 0; ti < targetCells.length; ti++) {
+      targetLookup[targetCells[ti][0] + ',' + targetCells[ti][1]] = true;
+    }
     const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
     const queue = [];
     var center = G.findEntryFootholdCenter();
@@ -945,7 +980,9 @@
 
     while (queue.length > 0) {
       const [r, c] = queue.shift();
-      if (c === edges.exitCol) return true;
+      if ((targetCells.length && targetLookup[r + ',' + c]) || (!targetCells.length && c === edges.exitCol)) {
+        return true;
+      }
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           if (dr === 0 && dc === 0) continue;
@@ -966,7 +1003,7 @@
     if (!G.player || !G.player.crew) return null;
     for (var i = 0; i < G.player.crew.length; i++) {
       var m = G.player.crew[i];
-      if (m.role === 'Swimmer' && m.alive) return m;
+      if ((m.role === 'Swimmer' || m.mechanicalRole === 'Swimmer') && m.alive) return m;
     }
     return null;
   }

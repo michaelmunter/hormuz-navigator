@@ -10,6 +10,13 @@
   var INTERN_CHARACTER_ID = 10;
   var PORT_HIRE_POOL_SIZE = 3;
   var DEFAULT_CREW_SNIPPET = "Keeps their history to themselves. Shows up on time and asks where the cargo is going.";
+  var STARTING_CREW = [
+    { charId: 18, role: "Captain" },
+    { charId: 1, role: "Sonar", mechanicalRole: "Swimmer" },
+    { charId: 2, role: "Shotgunner" },
+    { charId: 10, role: "Coffee Boy" },
+    { charId: 25, role: "Sailor" }
+  ];
 
   // 28 characters with individual portraits (sprites/crew/00.png – 27.png, 256×256 each)
   // weight: cost multiplier (1.0 = average, higher = more expensive to hire)
@@ -249,6 +256,7 @@
   G.BASE_HIRE_COST = BASE_HIRE_COST;
   G.DEFAULT_CREW_SNIPPET = DEFAULT_CREW_SNIPPET;
   G.INTERN_CHARACTER_ID = INTERN_CHARACTER_ID;
+  G.STARTING_CREW = STARTING_CREW.slice();
 
   G.getCrewTemplate = function (charId) {
     return CHARACTER_POOL.find(function (c) {
@@ -346,7 +354,8 @@
   };
 
   // Create a new crew member from pool (role assigned separately)
-  G.hireCrewMember = function (charId, role) {
+  G.hireCrewMember = function (charId, role, options) {
+    options = options || {};
     var template = G.getCrewTemplate(charId);
     if (!template) return null;
     return {
@@ -354,6 +363,7 @@
       name: template.name,
       bio: template.bio || DEFAULT_CREW_SNIPPET,
       role: role || "Standby",
+      mechanicalRole: options.mechanicalRole || null,
       quirkLabel: template.quirkLabel,
       quirkStat: template.quirkStat,
       quirkVal: template.quirkVal,
@@ -416,7 +426,11 @@
   G.hasCrewRole = function (role) {
     if (!G.player || !G.player.crew) return false;
     for (var i = 0; i < G.player.crew.length; i++) {
-      if (G.player.crew[i].role === role && G.player.crew[i].alive !== false)
+      if (
+        (G.player.crew[i].role === role ||
+          G.player.crew[i].mechanicalRole === role) &&
+        G.player.crew[i].alive !== false
+      )
         return true;
     }
     return false;
@@ -427,6 +441,9 @@
     if (!G.player || !G.player.crew) return null;
     for (var i = 0; i < G.player.crew.length; i++) {
       if (G.player.crew[i].role === role) return G.player.crew[i];
+    }
+    for (var j = 0; j < G.player.crew.length; j++) {
+      if (G.player.crew[j].mechanicalRole === role) return G.player.crew[j];
     }
     return null;
   };
@@ -440,6 +457,27 @@
     return -1;
   };
 
-  // No auto-fill — player must hire all crew manually
-  G.ensureStartingCrew = function () {};
+  G.ensureStartingCrew = function (player) {
+    player = player || G.player;
+    if (!player) return;
+    if (player.starterCrewGranted) return;
+    if (!Array.isArray(player.crew)) player.crew = [];
+
+    if (player.crew.length) {
+      player.starterCrewGranted = true;
+      return;
+    }
+
+    for (var i = 0; i < STARTING_CREW.length; i++) {
+      var slot = STARTING_CREW[i];
+      var member = G.hireCrewMember(slot.charId, slot.role, {
+        mechanicalRole: slot.mechanicalRole
+      });
+      if (!member) continue;
+      member.hireCost = 0;
+      player.crew.push(member);
+    }
+    player.starterCrewGranted = true;
+    if (G.ensureHireState) G.ensureHireState(player);
+  };
 })();

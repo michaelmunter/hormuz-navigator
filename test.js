@@ -12,6 +12,7 @@ const SCRIPT_ORDER = [
   'js/crew.js',
   'js/worldmap.js',
   'js/campaign.js',
+  'js/persistence.js',
   'js/game.js',
   'js/news.js',
   'js/dock.js',
@@ -318,6 +319,39 @@ describe('production map logic', () => {
     G.computeNumbers(ms);
     assert.equal(ms.grid[1][1], 2);
     assert.equal(ms.grid[0][1], 1);
+  });
+
+  it('keeps a shoreline tile playable when land only clips the outer edge', () => {
+    const { G } = createRuntime();
+    var cellSize = 20;
+
+    function readAlpha(px, py) {
+      return px < 4 ? 255 : 0;
+    }
+
+    assert.equal(G.classifyOceanTile(readAlpha, 0, 0, cellSize), true);
+  });
+
+  it('keeps a diagonal shoreline tile playable when the center stays clear', () => {
+    const { G } = createRuntime();
+    var cellSize = 20;
+
+    function readAlpha(px, py) {
+      return px + py < 12 ? 255 : 0;
+    }
+
+    assert.equal(G.classifyOceanTile(readAlpha, 0, 0, cellSize), true);
+  });
+
+  it('blocks a tile when land reaches the number-safe center', () => {
+    const { G } = createRuntime();
+    var cellSize = 20;
+
+    function readAlpha(px, py) {
+      return px >= 8 && px < 12 && py >= 8 && py < 12 ? 255 : 0;
+    }
+
+    assert.equal(G.classifyOceanTile(readAlpha, 0, 0, cellSize), false);
   });
 
   it('allows probing from any previously cleared area', () => {

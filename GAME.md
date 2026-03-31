@@ -15,41 +15,46 @@ The player manages a tanker, hires crew, clears a safe passage through mined wat
 
 ## Campaign Structure
 
-The early game uses a single tactical minefield close to Hormuz. Later campaign beats widen the theater into multiple linked sectors and unlock new destination contracts deeper in the Gulf.
+The campaign should be structured as a linear sequence of port chapters, not as a wide open contract board.
 
-The campaign should not feel like the map is merely zooming out for technical reasons. It should feel like the regional war economy is mutating and forcing the player into stranger and riskier work.
+The player starts in Fujairah. That first chapter is the onboarding run: the cleanest fiction, the smallest tactical footprint, and the least threatening route. The run should begin from Fujairah as an actual operating port, not from an arbitrary edge start.
 
-The game expression of that is:
+Each chapter gives the player:
+
+- a current operating port
+- a required shipment milestone measured in delivered barrels
+- a fixed cargo theme for that chapter
+- an authored route frame and sector count
+- a chapter-specific transit threat profile
+- a port-state change that pushes the campaign to the next location
+
+Completing a shipment milestone advances the campaign to the next port chapter. The map can widen, sector count can increase, and threats can escalate, but those changes should happen at authored beats rather than through constant freeform contract expansion.
+
+This should feel like escalation, not arbitrary level scaling:
 
 - more sectors to clear before a run is safe
-- wider visible geography at authored escalation beats
+- wider visible geography at authored chapter transitions
 - higher transit threat once the route is being sailed
-- new destination contracts with distinct cargo rules and unlock requirements
-- old routes changing in profitability, availability, and political risk as the conflict evolves
+- new chapter-specific cargo and support systems
+- the sense that the regional crisis is forcing the player from one operating base to the next
 
-This is intended to feel like escalation, not arbitrary level scaling.
+### Port Chapter Ladder
 
-### Contract Ladder
+Ports should behave as campaign chapters with clear progression, not as a menu of equally persistent jobs.
 
-Ports should behave as distinct contracts, not just farther destinations.
+Each chapter should define:
 
-Each contract should define:
-
-- destination port or terminal
-- cargo type
-- unlock condition
+- operating port
+- shipment milestone
+- cargo class
 - route length and sector count
 - transit threat profile
 - port-view fiction and event flavor
+- chapter transition condition
 
-New contracts can open because:
+New chapters open because the player completed the previous milestone. Ship systems, support unlocks, and campaign progression can deepen over time, but they should support the authored ladder rather than create a branching mission tree.
 
-- the player bought a ship class that can legally or physically carry the cargo
-- the player hired a specialist who can broker or coordinate the work
-- regional tension crossed a campaign threshold
-- a previous voyage changed the politics or economics of a route
-
-Older contracts do not need to disappear. They can remain available with lower profit, lower prestige, or different risk so the player is choosing between safer legacy work and more dangerous high-end jobs.
+Earlier ports do not need to remain active as normal jobs. They can transition out of the main loop once the campaign moves on, so the player stays on a clean, well-paced path through the region.
 
 ## Phase 1: Route Clearing
 
@@ -78,6 +83,7 @@ This keeps the swimmer fiction intact without forcing the system into a one-fron
 ### Entry And Opener
 
 - The route should begin where the ship actually enters the sector, not from an arbitrary point on the edge.
+- In the opening chapter, that entry point should clearly read as a departure from Fujairah.
 - The starting foothold may vary along the entry side so runs do not always open from the same place.
 - The opener should usually provide enough information to support deduction rather than forcing a blind guess on the first move.
 - Early ambiguity is acceptable, but the first impression of a sector should be "read the water and choose a line," not "flip a coin."
@@ -180,13 +186,13 @@ The route the player carved in Phase 1 is the route the ship now has to trust.
 
 Ports are the economic and roster-management layer.
 
-### Home Port
+### Operating Port
 
-- buy and load cargo
-- repair ship
+- load the chapter cargo
 - hire replacement crew
-- upgrade to larger ships
-- later: wait for better prices or accept worse margins for speed
+- install or improve persistent ship systems
+- recover after losses by taking a replacement hull and spending time
+- later: wait for better conditions or accept worse timing under rising tension
 
 ### Destination Port
 
@@ -198,29 +204,53 @@ Ports are the economic and roster-management layer.
 
 ### Contract Progression
 
-The destination ladder should widen the game through contract variety rather than a single linear list of farther ports.
+The campaign ladder should be mostly linear, with each port chapter setting the next difficulty band and map frame.
 
-| Contract | Unlock | Cargo / fiction | Tactical expression | Port-view flavor |
+| Chapter | Unlock | Milestone / role in campaign | Tactical expression | Port-view flavor |
 | --- | --- | --- | --- | --- |
-| Fujairah starter run | Available from the start | Conventional oil export. Straightforward legal trade and the cleanest fiction in the campaign. | Tight Hormuz framing, one sector, lowest threat mix, used for onboarding. | Straight port bulletin, pricing, basic rumors, a stable-feeling commercial environment. |
-| Dubai / Jebel Ali commercial run | Complete early runs or reach a tension beat | Higher-volume commercial traffic with better margins and more attention. | Slightly longer corridor, denser civilian traffic, more pressure to protect cargo value. | More financial chatter, insurance concerns, and visible signs that the conflict is distorting normal trade. |
-| Doha / Ras Laffan LNG run | Buy an LNG-capable ship | LNG contract. Specialized cargo that justifies a new hull and marks the first major logistics fork. | Longer route, more delicate economics, tougher penalty for loss, stronger incentive to preserve the ship. | Terminal-side corporate language, specialized loading visuals, market spikes, and gas-focused headlines. |
-| Shadow fleet contract | Hire a coordinator who can broker off-book work | Sanctions-busting or deniable tanker work. The coordinator should look suspiciously like Budanov without being literally him. | Dirtier threat mix, false-manifest fiction, stronger inspection or exposure pressure, heavier political risk. | Handlers, fake paperwork, covert briefings, and bulletin items showing events unfolding in waters the player already traveled through. |
-| Kuwait endgame run | Reach late-campaign tension and prove reliability on advanced contracts | Wartime arms shipment. Highest stakes, least deniable, and the clearest statement that the regional conflict has fully consumed the trade layer. | Widest framing, longest corridor, most sectors, and the hardest combined mine and transit pressure in the campaign. | War-footing atmosphere, military urgency, high-consequence headlines, and a port state that feels like the campaign finale. |
+| Fujairah opening | Available from the start | First shipment milestone. Clean onboarding, simplest cargo fiction, and the first true operating base. | Tight Hormuz framing, one sector, lowest threat mix, used for onboarding. | Stable-feeling port operations, straightforward briefings, and the clearest presentation of the core loop. |
+| Dubai / Jebel Ali escalation | Complete the Fujairah milestone | Larger shipment target and a clear step up in pressure. Establishes that the campaign advances by relocating the operation to a new port. | Slightly longer corridor, denser traffic, and more pressure to preserve crew and ship condition. | A busier, more strained port state showing that the wider crisis is distorting normal trade. |
+| Mid-campaign relocation | Complete the previous milestone | New shipment target, new support unlocks, and a broader theater. | More sectors, heavier mixed threats, and stricter recovery pressure after mistakes. | The port should feel less stable and more shaped by the ongoing conflict. |
+| Late-campaign covert phase | Reach late-campaign tension | Highest-pressure deniable work before the finale. | Dirty threat mix, harsher transit pressure, and stronger dependence on permanent support systems. | Handlers, opaque briefings, and a clear sense that normal commerce is giving way to wartime logistics. |
+| Finale | Complete the late-campaign milestone chain | Endgame shipment with the largest map frame and hardest route. | Widest framing, longest corridor, and the hardest combined mine and transit pressure in the campaign. | Full war-footing atmosphere and a port state that feels like the campaign endpoint. |
 
-This structure makes ship upgrades and crew hires matter beyond raw stats. A new hull or specialist should open a new class of work, not merely add HP or speed.
+This structure makes crew losses, time pressure, and persistent ship systems matter without asking the player to browse a wide contract market between runs.
 
 ### Port State Changes
 
-Ports do not need to be destroyed in sequence. A more flexible model is:
+Ports do not need to remain permanently available once the campaign moves on.
 
-- some ports stay open but become less profitable
-- some are temporarily closed by strikes, sanctions, or insurance refusal
-- some only accept certain cargo classes or ship types
-- some only appear after the player hires a specific specialist
-- some become politically hotter because of previous voyages
+The important rule is that chapter transitions should feel authored and legible. When the player completes a milestone, the campaign can relocate them for political, military, economic, or logistical reasons. The exact fiction can vary by chapter, but the gameplay result should be clear: the next phase has a new port, a broader map, and a harder shipment goal.
 
-This keeps the world reactive without making the campaign feel like a rigid scripted corridor.
+Older ports can still appear in headlines, rumors, or world-state flavor, but they do not need to stay in the active job list if that muddies progression.
+
+### Ship Loss And Recovery
+
+Ship destruction should be a major setback, not a full campaign reset.
+
+When the player loses a ship:
+
+- the cargo is lost
+- dead crew stay dead
+- time is lost
+- the current shipment milestone remains where it was
+- the player is issued a replacement ship so the campaign can continue
+
+The game should avoid debt spirals, recovery-contract bookkeeping, or a second economy for clawing back into viability.
+
+Loss should create tension through:
+
+- lost crew and replacement cost
+- delayed progress
+- the need to reattempt the current chapter route
+
+Persistent progression should survive ship loss:
+
+- chapter completion remains complete
+- delivered-barrel milestone progress remains banked
+- permanent ship systems and campaign unlocks carry onto the replacement hull
+
+This keeps failure meaningful without turning the campaign into an administrative recovery grind.
 
 ## Crew Philosophy
 
@@ -263,5 +293,6 @@ The game is moving toward this structure:
 - authored map-widening beats instead of constant micro-zoom changes
 - continuous transit across all cleared sectors
 - meaningful retreat-or-risk decisions when the Swimmer is lost
-- port-specific contract ladders gated by ships, crew, and campaign tension
-- stronger economic timing and world-state storytelling at port between runs
+- a mostly linear port-chapter ladder starting in Fujairah
+- persistent milestone progress and permanent systems across replacement ships
+- stronger world-state storytelling at port between runs without a large contract-selection layer

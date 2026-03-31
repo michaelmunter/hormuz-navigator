@@ -1,4 +1,4 @@
-const CACHE = 'hormuz-v17';
+const CACHE = 'hormuz-v18';
 const ASSETS = [
   './',
   './index.html',
@@ -21,11 +21,17 @@ const ASSETS = [
   './icon-512.png',
   './manifest.json',
   './sprites/ships/ship-1.png',
+  './sprites/ships/ship-3.png',
   './sprites/shahed.png',
+  './sprites/fpv.png',
   './sprites/missile.png',
-  './sprites/shahed-exploding.png',
   './sprites/explosion.png',
-  './sprites/missile_oceandrop.png'
+  './sprites/missile_oceandrop.svg',
+  './sprites/ui/ship-chevron.svg',
+  './sprites/ui/soundon.svg',
+  './sprites/ui/soundoff.svg',
+  './sprites/ui/ship.svg',
+  './sprites/ui/oil.svg'
 ];
 
 self.addEventListener('install', e => {
