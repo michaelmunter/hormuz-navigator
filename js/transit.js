@@ -8,33 +8,28 @@
   var RAMP_DURATION = 12;
   // Minimum distance (in cells) between missile spawn and ship — prevents instant-hit missiles
   var MIN_MISSILE_SPAWN_DIST_CELLS = 25;
-  var SHIP_ENTRY_OFFSET_CELLS = 1.35;
-  var SHIP_EXIT_DISTANCE_CELLS = 1.4;
-
   // Turn-based difficulty scaling — Iran's mining and tech progress.
   // Threat progression: FPV drones from turn 0, shaheds unlock at turn 3, missiles at turn 5.
   // Each stat scales continuously with player turn count.
   G.getDifficulty = function (turn) {
     var t = Math.max(0, turn);
-    // Destination difficulty multiplier affects threat spawn rates (lower rate = more frequent)
-    var destMod = (G.activeDestination && G.activeDestination.difficulty) || 1;
     return {
       mineRatio:    Math.min(0.30, 0.07 + t * 0.02),              // 0.07 → 0.30 over ~12 turns
 
       // Speeds are in cells/s — converted to px/s at use (multiply by G.CELL)
       // FPV drones — always available from turn 0
       hasFpv:       true,
-      fpvRate:      Math.max(1.5,  (6.0 - t * 0.4) / destMod),   // 6.0s → 2.0s, scaled by dest
+      fpvRate:      Math.max(1.5,  (6.0 - t * 0.4)),             // 6.0s → 2.0s
       fpvSpeed:     Math.min(3.0,  1.5 + t * 0.15),               // 1.5 → 3.0 cells/s (slow, clickable)
 
       // Shaheds — unlock at turn 3 (require gunner / auto cannon)
       hasShaheds:   t >= 3,
-      shahedRate:   Math.max(2.0,  (10.0 - t * 0.75) / destMod), // 10.0s → 2.5s, scaled by dest
+      shahedRate:   Math.max(2.0,  (10.0 - t * 0.75)),           // 10.0s → 2.5s
       shahedSpeed:  3.25,                                          // cells/s constant
 
       // Missiles — unlock at turn 5 (dodge only, no click defense)
       hasMissiles:  t >= 5,
-      missileRate:  Math.max(1.5,  (8.0 - t * 0.5) / destMod),   // 8.0s → 2.0s, scaled by dest
+      missileRate:  Math.max(1.5,  (8.0 - t * 0.5)),             // 8.0s → 2.0s
       missileSpeed: Math.min(7.5,  3.5 + t * 0.4)                 // 3.5 → 7.5 cells/s
     };
   };
@@ -71,6 +66,62 @@
 
   G.getTransitEntryOffsetCells = function () {
     return 0;
+  };
+
+  G.getTransitShipScale = function () {
+    return 0.78;
+  };
+
+  function isPortVisibleOnCanvas(target, canvasW, canvasH) {
+    if (!target) return false;
+    return target.x >= -24 && target.x <= canvasW + 24 && target.y >= -24 && target.y <= canvasH + 24;
+  }
+
+  G.playShipExitFade = function (startPx, startPy, startAngle, onDone) {
+    if (!G.sctx || !G.spriteCanvas || !G.drawShip) {
+      if (onDone) onDone();
+      return;
+    }
+
+    var duration = 420;
+    var drift = 0;
+    var startTime = performance.now();
+    var routePath = G.transit && G.transit.path ? G.transit.path : null;
+
+    function tick(now) {
+      var t = Math.min(1, (now - startTime) / duration);
+      var eased = 1 - Math.pow(1 - t, 2);
+      var alpha = 1 - eased;
+      var x = startPx + Math.cos(startAngle) * drift * eased;
+      var y = startPy + Math.sin(startAngle) * drift * eased;
+
+      if (G.gctx) {
+        G.gctx.clearRect(0, 0, G.gameCanvas.width, G.gameCanvas.height);
+        if (routePath && G.drawTransitRoute) {
+          G.drawTransitRoute(routePath, G.gctx, 1, {
+            strokeStyle: 'rgba(255, 255, 255, ' + (0.25 * alpha).toFixed(3) + ')'
+          });
+        }
+      }
+      G.sctx.clearRect(0, 0, G.spriteCanvas.width, G.spriteCanvas.height);
+      G.drawShip(
+        x,
+        y,
+        startAngle,
+        G.getTransitShipScale ? G.getTransitShipScale() : 0.78,
+        alpha
+      );
+
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        if (G.gctx) G.gctx.clearRect(0, 0, G.gameCanvas.width, G.gameCanvas.height);
+        G.sctx.clearRect(0, 0, G.spriteCanvas.width, G.spriteCanvas.height);
+        if (onDone) onDone();
+      }
+    }
+
+    requestAnimationFrame(tick);
   };
 
   G.getTransitDockAngle = function (direction) {
@@ -239,10 +290,16 @@
     t.entryAngle = G.getTransitDockAngle(direction);
     t.shipAngle = t.entryAngle;
 
-    // Read HP from the player's owned ship so port repairs and damage carry
+    // Read HP from the correct voyage hull. Supplied contracts should not
+    // inherit damage from a wrecked owned ship sitting in port.
     var ps = G.getActivePlayerShip();
-    t.hp = ps ? ps.owned.hp : 1;
-    t.maxHp = ps ? ps.tierData.hp : 1;
+    if (G.voyage && G.voyage.usesSuppliedShip) {
+      t.hp = ship.hp;
+      t.maxHp = ship.hp;
+    } else {
+      t.hp = ps ? ps.owned.hp : ship.hp;
+      t.maxHp = ps ? ps.tierData.hp : ship.hp;
+    }
 
     if (direction === 'forward') {
       t.shahedKills = 0;
@@ -375,8 +432,6 @@
     // Move ship — first finish the off-path sail-in, then advance along the route.
     if (Math.abs(t.shipSpeed) > 0.001) {
       var moveDelta = cfg.speed * t.shipSpeed * dt;
-      var startedSailOffThisFrame = false;
-
       if (t.entryOffset > 0 && moveDelta > 0) {
         var consumed = Math.min(t.entryOffset, moveDelta);
         t.entryOffset -= consumed;
@@ -388,27 +443,16 @@
         t.moveAccum -= 1;
         t.shipPos++;
         if (t.shipPos >= t.path.length) {
-          // Ship reached end of path — start sailing off-screen
-          if (!t.sailingOff) {
-            t.sailingOff = true;
-            startedSailOffThisFrame = true;
-            // Preserve the exact extrapolated position beyond the last route cell.
-            t.sailOffAccum = 1 + Math.max(0, t.moveAccum);
-            // Keep last heading for exit direction
-          }
-        }
-      }
-      // If sailing off, accumulate distance and complete when off-screen
-      if (t.sailingOff) {
-        if (!startedSailOffThisFrame) {
-          t.sailOffAccum = (t.sailOffAccum || 0) + cfg.speed * Math.abs(t.shipSpeed) * dt;
-        }
-        if (t.sailOffAccum > SHIP_EXIT_DISTANCE_CELLS) {
+          t.shipPos = t.path.length - 1;
+          t.moveAccum = 0;
           G.onTransitComplete();
           return;
         }
-        // Keep shipPos clamped to last valid index for angle calculation
-        t.shipPos = t.path.length - 1;
+      }
+      if (t.shipPos === t.path.length - 1 && t.moveAccum > 0) {
+        t.moveAccum = 0;
+        G.onTransitComplete();
+        return;
       }
       while (t.moveAccum <= -1) {
         t.moveAccum += 1;
@@ -420,11 +464,10 @@
       if (t.entryOffset > 0) {
         t.shipAngle = t.entryAngle;
       } else {
-        var moveDir = t.shipSpeed < -0.01 ? -1 : 1;
-        if (t.shipPos === 0 && t.moveAccum <= 0 && moveDir > 0) {
+        if (t.shipPos === 0 && t.moveAccum <= 0) {
           t.shipAngle = t.entryAngle;
         } else {
-          t.shipAngle = G.getTransitTravelAngle(t.path, t.shipPos, t.moveAccum, moveDir, t.entryAngle);
+          t.shipAngle = G.getTransitTravelAngle(t.path, t.shipPos, t.moveAccum, 1, t.entryAngle);
         }
       }
     }
@@ -432,6 +475,11 @@
     // Track elapsed time for grace period and ramp
     t.elapsed += dt;
     if (G.updateCrewActions) G.updateCrewActions();
+
+    // Interpolated ship position for threat spawning and collision.
+    var shipPos = getShipPixelPos(t);
+    var shipPx = shipPos.x, shipPy = shipPos.y;
+    var hitRadius = G.CELL * 0.45;
 
     // Threat ramp: 0 during grace, ramps 0→1 over RAMP_DURATION after grace ends, then stays at 1
     var threatTime = Math.max(0, t.elapsed - GRACE_PERIOD);
@@ -483,8 +531,8 @@
 
         // Pick a spawn cell that's far enough from the ship
         var _ox = G.gridOffsetX, _oy = G.gridOffsetY;
-        var shipPxSpawn = _ox + t.path[t.shipPos][1] * G.CELL + G.CELL / 2;
-        var shipPySpawn = _oy + t.path[t.shipPos][0] * G.CELL + G.CELL / 2;
+        var shipPxSpawn = shipPx;
+        var shipPySpawn = shipPy;
         var candidates = [];
         for (var ci = 0; ci < t.landEdgeCells.length; ci++) {
           var ec = t.landEdgeCells[ci];
@@ -543,11 +591,6 @@
         t.shaheds.push({ x: sx, y: sy, alive: true, trail: [], hp: 2 });
       }
     }
-
-    // Interpolated ship position for collision (matches visual position)
-    var shipPos = getShipPixelPos(t);
-    var shipPx = shipPos.x, shipPy = shipPos.y;
-    var hitRadius = G.CELL * 0.45;
 
     for (var i = t.missiles.length - 1; i >= 0; i--) {
       var m = t.missiles[i];
@@ -635,6 +678,10 @@
 
   G.onTransitComplete = function () {
     const t = G.transit;
+    var shipPos =
+      t && t.path && t.path.length && t.shipPos !== null
+        ? getShipPixelPos(t)
+        : null;
     t.active = false;
     cancelAnimationFrame(t.animFrame);
     clearInterval(t.transitTimerInterval);
@@ -648,9 +695,16 @@
         : 'Made it back safely!',
       'win-msg'
     );
-    setTimeout(function () {
-      G.advanceStage();
-    }, 1500);
+    var finishStage = function () {
+      setTimeout(function () {
+        G.advanceStage();
+      }, 250);
+    };
+    if (shipPos && G.playShipExitFade) {
+      G.playShipExitFade(shipPos.x, shipPos.y, t.shipAngle, finishStage);
+    } else {
+      finishStage();
+    }
   };
 
   G.onTransitDeath = function () {

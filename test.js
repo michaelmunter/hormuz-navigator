@@ -10,6 +10,8 @@ const SCRIPT_ORDER = [
   'js/ships.js',
   'js/roles.js',
   'js/crew.js',
+  'js/worldmap.js',
+  'js/campaign.js',
   'js/game.js',
   'js/news.js',
   'js/dock.js',
@@ -106,7 +108,7 @@ function createElement(tagName = 'div') {
   };
 }
 
-function createRuntime() {
+function createRuntime(options = {}) {
   const elements = new Map();
   const documentListeners = new Map();
 
@@ -190,7 +192,9 @@ function createRuntime() {
   }
 
   const G = context.window.Game;
-  G.ensureStartingCrew = function () {};
+  if (options.stubStartingCrew !== false) {
+    G.ensureStartingCrew = function () {};
+  }
   G.sounds = {
     transitComplete() {},
     cargoLoad() {},
@@ -507,6 +511,116 @@ describe('production map logic', () => {
 });
 
 describe('shared ship state', () => {
+  it('starts a fresh save in the fallback charter lane without an owned ship', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.updateBarMode = function () {};
+    G.initBoard = function () {};
+    G.savePlayer = function () {};
+    G.advanceStage = function () {};
+
+    G.startVoyage();
+
+    assert.equal(G.player.bank, 0);
+    assert.equal(G.player.ownedShips.length, 0);
+    assert.equal(G.voyage.originPort, 'Fujairah');
+    assert.equal(G.voyage.port, 'Dubai');
+    assert.equal(G.voyage.contract.id, 'fallback-charter');
+    assert.equal(G.voyage.contract.suppliedShipTier, 1);
+  });
+
+  it('grants a fixed starter crew once for a fresh save', () => {
+    const { G } = createRuntime({ stubStartingCrew: false });
+    G.player = G.createFreshPlayer();
+
+    G.ensureStartingCrew();
+
+    assert.equal(G.player.starterCrewGranted, true);
+    assert.deepEqual(
+      Array.from(G.player.crew, function (member) {
+        return [member.name, member.role];
+      }),
+      [
+        ['Captain', 'Captain'],
+        ['Agent', 'Sonar'],
+        ['Sergeant', 'Shotgunner'],
+        ['Intern', 'Coffee Boy'],
+        ['Sailor Boy', 'Sailor']
+      ]
+    );
+  });
+
+  it('completing a supplied charter does not auto-grant an owned ship', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.transit = { hp: 1 };
+    G.voyage = G.createFreshVoyage();
+    G.voyage.contract = { id: 'fallback-charter', suppliedShipTier: 1 };
+    G.voyage.usesSuppliedShip = true;
+    G.voyage.departureDay = 0;
+    G.voyage.outboundDays = 3;
+    G.voyage.returnDays = 2;
+    G.rollMarket = function () {};
+    G.savePlayer = function () {};
+    G.saveHighScore = function () {};
+    G.showMenu = function () {};
+
+    G.completeVoyage();
+
+    assert.equal(G.player.homePort, 'Fujairah');
+    assert.equal(G.player.turn, 1);
+    assert.equal(G.player.ownedShips.length, 0);
+    assert.equal(G.getPendingContract(G.player).id, 'fallback-charter');
+  });
+
+  it('offers a supplied fallback charter when the player has no operable ship', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.player.homePort = 'Ras Tanura';
+    G.player.ownedShips = [{ tier: 1, hp: 0, wrecked: true }];
+
+    const contract = G.getPendingContract(G.player);
+
+    assert.ok(contract);
+    assert.equal(contract.id, 'fallback-charter');
+    assert.equal(contract.origin, 'Ras Tanura');
+    assert.equal(contract.destination, 'Dubai');
+    assert.equal(contract.suppliedShipTier, 1);
+  });
+
+  it('preserves fallback contract minefield progress when retreating after a swimmer loss', () => {
+    const { G } = createRuntime();
+    setBoard(G, makeGrid(3, 4, true));
+    G.player = G.createFreshPlayer();
+    G.voyage = G.createFreshVoyage();
+    G.voyage.contract = { id: 'fallback-charter', suppliedShipTier: 1 };
+    G.voyage.stages = [{ id: 'mines_fwd' }];
+    G.voyage.stageIdx = 0;
+    G.ms = {
+      grid: makeGrid(3, 4, 0),
+      mines: makeGrid(3, 4, false),
+      revealed: makeGrid(3, 4, false),
+      flagged: makeGrid(3, 4, false),
+      gameOver: false,
+      gameWon: false,
+      mineCount: 2,
+      flagCount: 0,
+      pendingClearedMine: { r: 1, c: 1 },
+      timerInterval: 1
+    };
+    G.ms.revealed[1][0] = true;
+    G.savePlayer = function () {};
+    G.showMenu = function () {};
+
+    G.onRetreatToPort();
+
+    assert.ok(G.player.contractProgress['fallback-charter']);
+    assert.equal(
+      G.player.contractProgress['fallback-charter'].minesweeper.revealed[1][0],
+      true,
+    );
+  });
+
   it('repairs using the shared repair flow and syncs transit HP', () => {
     const { G, window } = createRuntime();
     G.player = {
@@ -525,7 +639,41 @@ describe('shared ship state', () => {
 
     assert.equal(G.player.bank, 999999999 - repairCost);
     assert.equal(G.player.ownedShips[0].hp, 3);
+    assert.equal(G.player.ownedShips[0].wrecked, false);
     assert.equal(G.transit.hp, 3);
+  });
+
+  it('wrecks an owned ship instead of deleting it on destruction', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.player.crew = [{ name: 'Captain', role: 'Captain', alive: true }];
+    G.player.ownedShips = [{ tier: 2, hp: 3, wrecked: false }];
+    G.player.activeShipIdx = 0;
+    G.activeShip = G.getShipTier(2);
+    G.voyage = G.createFreshVoyage();
+
+    const result = G.processShipDestruction('transit');
+
+    assert.equal(result.isSuppliedRun, false);
+    assert.equal(G.player.ownedShips.length, 1);
+    assert.equal(G.player.ownedShips[0].hp, 0);
+    assert.equal(G.player.ownedShips[0].wrecked, true);
+    assert.equal(G.getPendingContract(G.player).id, 'fallback-charter');
+  });
+
+  it('does not sync supplied-contract transit damage onto a wrecked owned ship', () => {
+    const { G } = createRuntime();
+    G.player = G.createFreshPlayer();
+    G.player.ownedShips = [{ tier: 1, hp: 0, wrecked: true }];
+    G.player.activeShipIdx = 0;
+    G.voyage = G.createFreshVoyage();
+    G.voyage.usesSuppliedShip = true;
+    G.transit = { hp: 1, maxHp: 1 };
+
+    G.syncTransitHpToActiveShip();
+
+    assert.equal(G.player.ownedShips[0].hp, 0);
+    assert.equal(G.player.ownedShips[0].wrecked, true);
   });
 
   it('syncs transit damage back to the owned ship when a leg completes', () => {
@@ -759,6 +907,53 @@ describe('shared ship state', () => {
     });
 
     assert.equal('order' in bulletin.items[0], false);
+  });
+});
+
+describe('boot flow', () => {
+  it('boots a fresh save to the main menu after both map images load', () => {
+    const { G } = createRuntime();
+    let menuCalls = 0;
+    let returningCalls = 0;
+
+    G.initCanvases = function () {};
+    G.initInput = function () {};
+    G.initBoard = function () {};
+    G.loadPlayer = function () {
+      G.player = G.createFreshPlayer();
+      G.voyage = G.createFreshVoyage();
+    };
+    G.showMenu = function () { menuCalls++; };
+    G.showReturningMenu = function () { returningCalls++; };
+
+    G.oceanImg.onload();
+    G.landImg.onload();
+
+    assert.equal(menuCalls, 1);
+    assert.equal(returningCalls, 0);
+  });
+
+  it('boots a progressed save to the returning menu after both map images load', () => {
+    const { G } = createRuntime();
+    let menuCalls = 0;
+    let returningCalls = 0;
+
+    G.initCanvases = function () {};
+    G.initInput = function () {};
+    G.initBoard = function () {};
+    G.loadPlayer = function () {
+      G.player = G.createFreshPlayer();
+      G.player.bank = G.STARTING_BANK + 1;
+      G.voyage = G.createFreshVoyage();
+    };
+    G.showMenu = function () { menuCalls++; };
+    G.showReturningMenu = function () { returningCalls++; };
+
+    G.oceanImg.onload();
+    G.landImg.onload();
+
+    assert.equal(menuCalls, 0);
+    assert.equal(returningCalls, 1);
   });
 });
 

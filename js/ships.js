@@ -9,7 +9,7 @@
       tier: 1, name: 'The Rustbucket', shipClass: 'Coastal Tanker',
       cost: 5000000, cargoValue: 8000000, gridWidth: 1,
       crewSlots: ['Captain', 'Swimmer', 'Shotgunner'],
-      hp: 1, speed: 3.5,
+      hp: 1, speed: 2.7,
       sprite: 'sprites/ships/ship-1.png',
       flavorText: "Iran doesn't even bother with you."
     },
@@ -55,15 +55,16 @@
     }
   ];
 
-  // Derived properties for backward compat
+  // Derived property still used by role gating.
   G.SHIP_TIERS.forEach(function (s) {
-    s.crewCap = s.crewSlots.length;
-    s.hasGunner = s.crewSlots.indexOf('Gunner') !== -1;
-    s.slots = Math.max(0, s.crewSlots.length - 3); // legacy compat
+    s.slots = Math.max(0, s.crewSlots.length - 3);
   });
 
   G.getShipTier = function (tier) {
-    return G.SHIP_TIERS[tier - 1];
+    for (var i = 0; i < G.SHIP_TIERS.length; i++) {
+      if (G.SHIP_TIERS[i].tier === tier) return G.SHIP_TIERS[i];
+    }
+    return null;
   };
 
   // Shared visual hull length in grid cells. Renderer and transit turning both

@@ -10,215 +10,54 @@
 
   // --- Player state & persistence ---
   var SAVE_KEY = "hormuz_save";
-  var SAVE_VERSION = 9;
-  var STARTING_BANK = 1000000; // $1M — Rustbucket is free starter ship
-  var MARKET_REFERENCE_PRICE = 82;
-  var MARKET_CARGO_COST_SCALE = 0.09;
-  var CAMPAIGN_MONTHS = [
-    { name: "June", shortName: "Jun", days: 30 },
-    { name: "July", shortName: "Jul", days: 31 },
-    { name: "August", shortName: "Aug", days: 31 },
-    { name: "September", shortName: "Sep", days: 30 },
-    { name: "October", shortName: "Oct", days: 31 },
-    { name: "November", shortName: "Nov", days: 30 },
-    { name: "December", shortName: "Dec", days: 31 },
-    { name: "January", shortName: "Jan", days: 31 },
-    { name: "February", shortName: "Feb", days: 28 },
-    { name: "March", shortName: "Mar", days: 31 },
-    { name: "April", shortName: "Apr", days: 30 },
-    { name: "May", shortName: "May", days: 31 },
-  ];
+  var SAVE_VERSION = 11;
 
-  G.player = null;
-
-  G.createFreshVoyage = function () {
-    return {
-      stageIdx: -1,
-      port: "",
-      stages: [],
-      departureDay: 0,
-      outboundDays: 0,
-      returnDays: 0,
-      portBulletin: null,
-      timer: null,
-      cargoLoaded: false,
-      oilPct: 0,
-      selling: false,
-      loading: false,
-      saleValue: 0,
-      cargoCost: 0,
-      targetOilPct: 0,
-      saleStartPct: 0,
-    };
-  };
-
-  function _buildMarketHeadline(market, turn) {
-    var spread = market.sellPrice - market.buyPrice;
-    if (turn < 3) {
-      return (
-        "Gulf crude trades at $" +
-        market.buyPrice +
-        " buy / $" +
-        market.sellPrice +
-        " sell as shipping lanes stay open."
-      );
-    }
-    if (turn < 7) {
-      return (
-        "War-risk jitters push Gulf crude to $" +
-        market.buyPrice +
-        " buy / $" +
-        market.sellPrice +
-        " sell."
-      );
-    }
-    return (
-      "Escalation sends Gulf crude to $" +
-      market.buyPrice +
-      " buy / $" +
-      market.sellPrice +
-      " sell with spreads at $" +
-      spread +
-      "."
-    );
+  function _getContractProgress(contractId) {
+    if (!G.player || !G.player.contractProgress || !contractId) return null;
+    return G.player.contractProgress[contractId] || null;
   }
 
-  function _createMarketForTurn(turn, previousMarket) {
-    var previousMid = previousMarket
-      ? (previousMarket.buyPrice + previousMarket.sellPrice) / 2
-      : MARKET_REFERENCE_PRICE;
-    var noise = Math.round(Math.random() * 10 - 5);
-    var targetMid = Math.max(68, Math.round(previousMid + noise));
-    var spreadBase = turn < 3 ? 14 : turn < 7 ? 19 : 26;
-    var spread = spreadBase + Math.floor(Math.random() * 5);
-    var buyPrice = Math.max(58, targetMid - Math.floor(spread / 2));
-    var sellPrice = Math.max(buyPrice + 4, targetMid + Math.ceil(spread / 2));
-    return {
-      buyPrice: buyPrice,
-      sellPrice: sellPrice,
-      headline: _buildMarketHeadline(
-        { buyPrice: buyPrice, sellPrice: sellPrice },
-        turn,
-      ),
-    };
+  function _setContractProgress(contractId, snapshot) {
+    if (!G.player || !contractId) return;
+    if (!G.player.contractProgress) G.player.contractProgress = {};
+    G.player.contractProgress[contractId] = snapshot;
   }
 
-  G.createFreshPlayer = function () {
-    var market = _createMarketForTurn(0, null);
-    var player = {
-      bank: STARTING_BANK,
-      crew: [],
-      ownedShips: [{ tier: 1, hp: 1 }], // start with The Rustbucket
-      activeShipIdx: 0, // index into ownedShips
-      turn: 0,
-      calendarDay: 0,
-      equipment: [],
-      inRun: false,
-      totalCrewDeaths: 0,
-      conflictTier: 0,
-      market: market,
-      latestBulletin: null,
-    };
-    if (G.ensureHireState) G.ensureHireState(player);
-    return player;
+  function _clearContractProgress(contractId) {
+    if (!G.player || !G.player.contractProgress || !contractId) return;
+    delete G.player.contractProgress[contractId];
+  }
+
+  function _setTipSeen(tipId) {
+    if (!G.player || !tipId) return;
+    if (!G.player.tipFlags) G.player.tipFlags = {};
+    G.player.tipFlags[tipId] = true;
+  }
+
+  function _hasSeenTip(tipId) {
+    return !!(G.player && G.player.tipFlags && G.player.tipFlags[tipId]);
+  }
+
+  G._incidentTipOnClose = null;
+
+  G.showIncidentTip = function (title, body, onClose) {
+    var overlay = document.getElementById("incidentTipOverlay");
+    if (!overlay) {
+      if (onClose) onClose();
+      return;
+    }
+    document.getElementById("incidentTipTitle").textContent = title || "Incident";
+    document.getElementById("incidentTipBody").textContent = body || "";
+    G._incidentTipOnClose = onClose || null;
+    overlay.classList.add("active");
   };
 
-  G.getCampaignDateParts = function (calendarDay) {
-    var dayIndex = Math.max(0, Math.floor(calendarDay || 0));
-    var year = 1;
-    while (dayIndex >= 365) {
-      dayIndex -= 365;
-      year++;
-    }
-    for (var i = 0; i < CAMPAIGN_MONTHS.length; i++) {
-      if (dayIndex < CAMPAIGN_MONTHS[i].days) {
-        return {
-          year: year,
-          monthIndex: i,
-          monthName: CAMPAIGN_MONTHS[i].name,
-          monthShortName: CAMPAIGN_MONTHS[i].shortName,
-          day: dayIndex + 1,
-        };
-      }
-      dayIndex -= CAMPAIGN_MONTHS[i].days;
-    }
-    return {
-      year: year,
-      monthIndex: CAMPAIGN_MONTHS.length - 1,
-      monthName: "May",
-      monthShortName: "May",
-      day: 31,
-    };
-  };
-
-  G.formatCampaignDate = function (calendarDay) {
-    var parts = G.getCampaignDateParts(calendarDay);
-    return parts.monthShortName + " " + parts.day + ", Y" + parts.year;
-  };
-
-  G.formatCampaignDateRange = function (startDay, endDay) {
-    var start = G.getCampaignDateParts(startDay);
-    var end = G.getCampaignDateParts(endDay);
-    if (start.year === end.year && start.monthIndex === end.monthIndex) {
-      if (start.day === end.day)
-        return start.monthShortName + " " + start.day + ", Y" + start.year;
-      return (
-        start.monthShortName +
-        " " +
-        start.day +
-        "-" +
-        end.day +
-        ", Y" +
-        start.year
-      );
-    }
-    if (start.year === end.year) {
-      return (
-        start.monthShortName +
-        " " +
-        start.day +
-        " - " +
-        end.monthShortName +
-        " " +
-        end.day +
-        ", Y" +
-        start.year
-      );
-    }
-    return (
-      start.monthShortName +
-      " " +
-      start.day +
-      ", Y" +
-      start.year +
-      " - " +
-      end.monthShortName +
-      " " +
-      end.day +
-      ", Y" +
-      end.year
-    );
-  };
-
-  G.getDisplayCalendarDay = function () {
-    if (G.voyage && G.voyage.stages && G.voyage.stageIdx >= 0) {
-      var stage = G.voyage.stages[G.voyage.stageIdx];
-      if (
-        stage &&
-        stage.id === "manage_port" &&
-        typeof G.voyage.departureDay === "number"
-      ) {
-        return G.voyage.departureDay + Math.max(1, G.voyage.outboundDays || 0);
-      }
-    }
-    if (G.player && typeof G.player.calendarDay === "number")
-      return G.player.calendarDay;
-    return 0;
-  };
-
-  G.getMapTier = function () {
-    if (!G.player || typeof G.player.conflictTier !== "number") return 0;
-    return Math.max(0, G.player.conflictTier);
+  G.closeIncidentTip = function () {
+    var overlay = document.getElementById("incidentTipOverlay");
+    if (overlay) overlay.classList.remove("active");
+    var onClose = G._incidentTipOnClose;
+    G._incidentTipOnClose = null;
+    if (onClose) onClose();
   };
 
   // Convenience: get active ship data (tier object + current HP)
@@ -236,6 +75,36 @@
     };
   };
 
+  G.isOwnedShipOperable = function (ownedShip) {
+    return !!(
+      ownedShip &&
+      ownedShip.wrecked !== true &&
+      typeof ownedShip.hp === "number" &&
+      ownedShip.hp > 0
+    );
+  };
+
+  G.getSailablePlayerShip = function () {
+    var playerShip = G.getActivePlayerShip();
+    if (!playerShip || !G.isOwnedShipOperable(playerShip.owned)) return null;
+    return playerShip;
+  };
+
+  G.getDisplayedShip = function () {
+    var playerShip = G.getSailablePlayerShip();
+    if (playerShip) return playerShip;
+    if (G.voyage && G.voyage.usesSuppliedShip && G.activeShip) {
+      return {
+        tierData: G.activeShip,
+        hp: G.activeShip.hp,
+        maxHp: G.activeShip.hp,
+        owned: null,
+        isSupplied: true,
+      };
+    }
+    return null;
+  };
+
   G.savePlayer = function () {
     try {
       var stage =
@@ -250,7 +119,10 @@
         G.getMinesweeperSnapshot;
       var voyageSnapshot = {
         stageIdx: G.voyage.stageIdx,
+        originPort: G.voyage.originPort,
         port: G.voyage.port,
+        contract: G.voyage.contract,
+        usesSuppliedShip: !!G.voyage.usesSuppliedShip,
         stages: G.voyage.stages,
         departureDay: G.voyage.departureDay,
         outboundDays: G.voyage.outboundDays,
@@ -295,7 +167,7 @@
       G.player = data.player;
       if (G.ensureHireState) G.ensureHireState();
       if (!G.player.market)
-        G.player.market = _createMarketForTurn(G.player.turn || 0, null);
+        G.player.market = G.createMarketForTurn(G.player.turn || 0, null);
       G.voyage = Object.assign(G.createFreshVoyage(), data.voyage || {});
       G.savedMinesweeper = data.minesweeper || null;
     } catch (e) {
@@ -336,9 +208,9 @@
       data.version = 6;
     }
     if (data.version < 7) {
-      data.player.market = _createMarketForTurn(
+      data.player.market = G.createMarketForTurn(
         data.player.turn || 0,
-        data.player.market || null,
+        data.player.market || null
       );
       data.voyage = data.voyage || {};
       if (typeof data.voyage.cargoCost !== "number") data.voyage.cargoCost = 0;
@@ -361,6 +233,35 @@
         data.player.latestBulletin = null;
       data.version = 9;
     }
+    if (data.version < 10) {
+      if (data.player.homePort === undefined) {
+        data.player.homePort = G.ORIGIN_PORT ? G.ORIGIN_PORT.name : "Persian Gulf";
+      }
+      if (data.player.onboardingDone === undefined) {
+        if (data.player.tutorialDone !== undefined) data.player.onboardingDone = !!data.player.tutorialDone;
+        else data.player.onboardingDone = true;
+      }
+      if (data.player.starterCrewGranted === undefined)
+        data.player.starterCrewGranted = true;
+      data.voyage = data.voyage || {};
+      if (data.voyage.originPort === undefined) data.voyage.originPort = "";
+      if (data.voyage.contract === undefined) data.voyage.contract = null;
+      if (data.voyage.usesSuppliedShip === undefined)
+        data.voyage.usesSuppliedShip = false;
+      data.version = 10;
+    }
+    if (data.version < 11) {
+      if (!Array.isArray(data.player.ownedShips)) data.player.ownedShips = [];
+      if (!data.player.contractProgress) data.player.contractProgress = {};
+      if (!data.player.tipFlags) data.player.tipFlags = {};
+      if (data.player.tutorialDone !== undefined && data.player.onboardingDone === undefined) {
+        data.player.onboardingDone = !!data.player.tutorialDone;
+      }
+      delete data.player.tutorialDone;
+      if (data.voyage.usesSuppliedShip === undefined)
+        data.voyage.usesSuppliedShip = false;
+      data.version = 11;
+    }
     return data;
   };
 
@@ -368,58 +269,6 @@
     try {
       localStorage.removeItem(SAVE_KEY);
     } catch (e) {}
-  };
-
-  G.formatMoney = function (amount) {
-    return "$" + amount.toLocaleString();
-  };
-
-  G.CRUDE_PRICE_PER_BARREL = MARKET_REFERENCE_PRICE;
-
-  G.getCurrentBuyPrice = function () {
-    return (
-      (G.player && G.player.market && G.player.market.buyPrice) ||
-      MARKET_REFERENCE_PRICE
-    );
-  };
-
-  G.getCurrentSellPrice = function () {
-    return (
-      (G.player && G.player.market && G.player.market.sellPrice) ||
-      MARKET_REFERENCE_PRICE + 8
-    );
-  };
-
-  G.getCargoPurchaseCost = function (shipTierData) {
-    if (!shipTierData) return 0;
-    return Math.round(
-      shipTierData.cargoValue *
-        MARKET_CARGO_COST_SCALE *
-        (G.getCurrentBuyPrice() / MARKET_REFERENCE_PRICE),
-    );
-  };
-
-  G.getCargoSaleValue = function (shipTierData) {
-    if (!shipTierData) return 0;
-    return Math.round(
-      shipTierData.cargoValue *
-        MARKET_CARGO_COST_SCALE *
-        (G.getCurrentSellPrice() / MARKET_REFERENCE_PRICE),
-    );
-  };
-
-  G.getAffordableLoadRatio = function (shipTierData) {
-    var fullCost = G.getCargoPurchaseCost(shipTierData);
-    if (!fullCost) return 0;
-    return Math.max(0, Math.min(1, G.player.bank / fullCost));
-  };
-
-  G.rollMarket = function () {
-    if (!G.player) return;
-    G.player.market = _createMarketForTurn(
-      G.player.turn,
-      G.player.market || null,
-    );
   };
 
   function _formatBarrels(amount) {
@@ -458,6 +307,29 @@
     );
   }
 
+  function _buildContractPanel(contract) {
+    if (!contract) return "";
+    return (
+      '<div class="port-events">' +
+      '<div class="stage-subtitle">' +
+      contract.name +
+      "</div>" +
+      '<div class="port-bulletin-list">' +
+      '<div class="port-bulletin-item">' +
+      contract.origin +
+      " → " +
+      contract.destination +
+      "</div>" +
+      '<div class="port-bulletin-item">' +
+      contract.cargo +
+      ". " +
+      contract.brief +
+      "</div>" +
+      "</div>" +
+      "</div>"
+    );
+  }
+
   function _buildPortEventsBlock(bulletin) {
     if (!bulletin || !bulletin.items || !bulletin.items.length) return "";
     return (
@@ -483,11 +355,13 @@
 
   function _getCargoCapacityBarrels(ship) {
     if (!ship) return 0;
-    return (ship.cargoValue * MARKET_CARGO_COST_SCALE) / MARKET_REFERENCE_PRICE;
+    return (
+      (ship.cargoValue * G.MARKET_CARGO_COST_SCALE) / G.MARKET_REFERENCE_PRICE
+    );
   }
 
   function _buildCargoSummary(options) {
-    var price = options.priceText || "$" + MARKET_REFERENCE_PRICE + "/bbl";
+    var price = options.priceText || "$" + G.MARKET_REFERENCE_PRICE + "/bbl";
     var transferLabel = options.transferLabel || "Transferred";
     var transferText = options.transferText || "0 bbl";
     var totalLabel = options.totalLabel || "Trade total";
@@ -530,11 +404,13 @@
     );
   }
 
-  G.setStatus = function (text, className) {
+  function setStatusBar(text, className) {
     var el = document.getElementById("statusBar");
     el.textContent = text;
     el.className = "status-bar" + (className ? " " + className : "");
-  };
+  }
+
+  G.setStatus = setStatusBar;
 
   // Wait for both map images to load before init
   var imgLoaded = 0;
@@ -557,7 +433,11 @@
         if (restoredStage && restoredStage.id === "manage_port") {
           G.activeShip = G.getActivePlayerShip()
             ? G.getActivePlayerShip().tierData
-            : null;
+            : G.voyage &&
+                G.voyage.contract &&
+                typeof G.voyage.contract.suppliedShipTier === "number"
+              ? G.getShipTier(G.voyage.contract.suppliedShipTier)
+              : null;
           if (G.activeShip) G.sprites.ship.src = G.activeShip.sprite;
           G.roundScore = G.voyage.saleValue || 0;
           if (G.voyage.selling && G.voyage.selling !== "done") {
@@ -599,7 +479,11 @@
         ) {
           G.activeShip = G.getActivePlayerShip()
             ? G.getActivePlayerShip().tierData
-            : null;
+            : G.voyage &&
+                G.voyage.contract &&
+                typeof G.voyage.contract.suppliedShipTier === "number"
+              ? G.getShipTier(G.voyage.contract.suppliedShipTier)
+              : null;
           if (G.activeShip) G.sprites.ship.src = G.activeShip.sprite;
           G.state = "MINESWEEPER";
           G.updateBarMode("gameplay");
@@ -616,7 +500,7 @@
         G.savePlayer();
       }
 
-      if (G.player.bank !== STARTING_BANK || G.player.turn > 0) {
+      if (G.player.bank !== G.STARTING_BANK || G.player.turn > 0) {
         G.showReturningMenu();
       } else {
         G.showMenu();
@@ -635,7 +519,7 @@
     fpv: "sprites/fpv.png",
     missile: "sprites/missile.png",
     explosion: "sprites/explosion.png",
-    missileOceanDrop: "sprites/missile_oceandrop.png",
+    missileOceanDrop: "sprites/missile_oceandrop.svg",
   };
   Object.keys(spriteSrcs).forEach(function (name) {
     G.sprites[name].src = spriteSrcs[name];
@@ -647,7 +531,7 @@
     var maxH = window.innerHeight - barHeight;
 
     // Set crop region based on campaign tier
-    G.crop = G.getCropForTier(turn);
+    G.crop = G.getCropForContext ? G.getCropForContext(turn) : G.getCropForTier(turn);
 
     var grid = G.getGridSize(turn);
     G.cols = grid.cols;
@@ -655,7 +539,7 @@
 
     var cellW = Math.floor(maxW / G.cols);
     var cellH = Math.floor(maxH / G.rows);
-    G.CELL = Math.max(16, Math.min(38, Math.min(cellW, cellH)));
+    G.CELL = Math.max(12, Math.min(29, Math.floor(Math.min(cellW, cellH) * 0.75)));
 
     // Grid pixel dimensions
     G.gridW = G.cols * G.CELL;
@@ -689,7 +573,6 @@
 
   // Stage definitions — {port} replaced with random delivery port
   var STAGE_DEFS = [
-    { id: "sailing_out", label: "Sailing to Hormuz", auto: 2500 },
     { id: "mines_fwd", label: "Clearing mines" },
     { id: "transit_fwd", label: "Running the strait" },
     { id: "sailing_to", label: "Sailing to {port}", auto: 2000 },
@@ -749,9 +632,16 @@
 
   // Start a new voyage or continue from management stage
   G.startVoyage = function () {
-    var playerShip = G.getActivePlayerShip();
-    if (!playerShip) return;
-    var ship = playerShip.tierData;
+    var playerShip = G.getSailablePlayerShip();
+    var scriptedContract = G.getPendingContract ? G.getPendingContract() : null;
+    var suppliedShipTier = G.getContractShipTier ? G.getContractShipTier(scriptedContract) : null;
+    var usesSuppliedShip = !playerShip && suppliedShipTier != null;
+    var ship = playerShip ? playerShip.tierData : (usesSuppliedShip ? G.getShipTier(suppliedShipTier) : null);
+    if (!ship) return;
+    var destination = scriptedContract
+      ? scriptedContract.destination
+      : G.getRandomPort();
+    var originPort = G.getHomePortName ? G.getHomePortName(G.player) : "Persian Gulf";
 
     G.activeShip = ship;
 
@@ -760,9 +650,41 @@
 
     // Load ship sprite
     G.sprites.ship.src = ship.sprite;
+    if (!G.sprites.ship.complete && G.sprites.ship.addEventListener) {
+      G.sprites.ship.addEventListener("load", function onVoyageShipLoad() {
+        G.sprites.ship.removeEventListener("load", onVoyageShipLoad);
+        if (G.state === "MINESWEEPER" && G.drawMinesweeperEntryShip) {
+          G.drawMinesweeperEntryShip();
+        } else if (
+          (G.state === "TRANSIT_FORWARD" || G.state === "TRANSIT_RETURN") &&
+          G.drawTransitBoard
+        ) {
+          G.drawTransitBoard(G.transit);
+        }
+      });
+    }
 
-    // Pick random delivery port
-    G.voyage.port = G.getRandomPort();
+    G.voyage.originPort = originPort;
+    G.voyage.port = destination;
+    G.voyage.contract = scriptedContract
+      ? {
+          id: scriptedContract.id,
+          name: scriptedContract.name,
+          origin: originPort,
+          destination: scriptedContract.destination,
+          cargo: scriptedContract.cargo,
+          brief: scriptedContract.brief,
+          suppliedShipTier: suppliedShipTier,
+        }
+      : {
+          id: "standard-voyage",
+          name: "Open Contract",
+          origin: originPort,
+          destination: destination,
+          cargo: "Conventional crude",
+          brief: "Commercial work through increasingly hostile waters.",
+        };
+    G.voyage.usesSuppliedShip = !!usesSuppliedShip;
     G.voyage.stages = buildVoyageStages(G.voyage.port);
     G.voyage.stageIdx = -1; // will be incremented by advanceStage
     G.voyage.departureDay =
@@ -770,9 +692,16 @@
     G.voyage.outboundDays = _rollVoyageLegDays();
     G.voyage.returnDays = _rollVoyageLegDays();
     G.voyage.portBulletin = null;
+    if (scriptedContract && suppliedShipTier != null) {
+      G.voyage.cargoLoaded = true;
+      G.voyage.oilPct = 100;
+      G.voyage.targetOilPct = 100;
+      G.voyage.cargoCost = 0;
+    }
 
     // Init board
     G.initBoard(G.getMapTier());
+    if (G.renderShipButton) G.renderShipButton();
 
     G.player.inRun = true;
     G.savePlayer();
@@ -817,7 +746,15 @@
           G.initBoard(G.getMapTier());
           G.state = "MINESWEEPER";
           var diff = G.getDifficulty(G.player.turn);
-          G.initMinesweeper(diff.mineRatio);
+          var savedContractProgress =
+            G.voyage.contract && G.voyage.contract.id
+              ? _getContractProgress(G.voyage.contract.id)
+              : null;
+          if (savedContractProgress && savedContractProgress.minesweeper) {
+            G.restoreMinesweeper(savedContractProgress.minesweeper);
+          } else {
+            G.initMinesweeper(diff.mineRatio);
+          }
           G.renderTacticalCrewBar();
           G.updateCrewActions();
           G.drawBoard();
@@ -880,7 +817,26 @@
           G.renderTacticalCrewBar();
           G.updateMapStageCard();
           G.savePlayer();
-          window.sellAndReturn();
+          var incidentTitle = "";
+          var incidentBody = "";
+          if (
+            !_hasSeenTip("arrival_with_dead_crew") &&
+            G.player &&
+            G.player.crew &&
+            G.player.crew.some(function (member) { return member.alive === false; })
+          ) {
+            _setTipSeen("arrival_with_dead_crew");
+            incidentTitle = "Casualties";
+            incidentBody =
+              "You made port, but not everyone did. Dead crew stay dead until you replace them back at home port.";
+          }
+          if (incidentTitle) {
+            G.showIncidentTip(incidentTitle, incidentBody, function () {
+              window.sellAndReturn();
+            });
+          } else {
+            window.sellAndReturn();
+          }
           break;
       }
     }
@@ -994,6 +950,11 @@
     _loadCargoAndSail();
   };
 
+  window.beginPendingContract = function () {
+    if (!G.hasCrewRole("Captain")) return;
+    G.startVoyage();
+  };
+
   window.sellAndReturn = function () {
     var v = G.voyage;
     if (!v.stages || v.stages[v.stageIdx].id !== "manage_port") return;
@@ -1037,9 +998,15 @@
         requestAnimationFrame(animate);
         return;
       }
-      setTimeout(function () {
-        if (onDone) onDone();
-      }, holdDuration);
+      G.drawBoard();
+      G.drawTransitRoute(path, G.gctx, 1);
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          setTimeout(function () {
+            if (onDone) onDone();
+          }, holdDuration);
+        });
+      });
     }
 
     requestAnimationFrame(animate);
@@ -1072,31 +1039,22 @@
       ovCtx.drawImage(G.oceanCanvas, 0, 0, rect.width, rect.height);
     if (G.gameCanvas)
       ovCtx.drawImage(G.gameCanvas, 0, 0, rect.width, rect.height);
-    if (path) G.drawTransitRoute(path, ovCtx, 1);
-    if (path && path.length && G.drawShipOnContext) {
-      var first = path[0];
-      var shipAngle = G.getTransitDockAngle ? G.getTransitDockAngle() : 0;
-      var shipPx = G.gridOffsetX + first[1] * G.CELL + G.CELL / 2;
-      var shipPy = G.gridOffsetY + first[0] * G.CELL + G.CELL / 2;
-      G.drawShipOnContext(ovCtx, shipPx, shipPy, shipAngle);
-    }
+    if (G.spriteCanvas)
+      ovCtx.drawImage(G.spriteCanvas, 0, 0, rect.width, rect.height);
     if (G.landCanvas)
       ovCtx.drawImage(G.landCanvas, 0, 0, rect.width, rect.height);
 
     wrap.appendChild(overlay);
-    requestAnimationFrame(function () {
-      G.advanceStage();
-    });
 
     setTimeout(function () {
       overlay.style.transition = "opacity " + revealFadeDuration + "ms ease-out";
-      overlay.style.opacity = "0";
-      overlay.addEventListener("transitionend", function () {
-        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      }, { once: true });
+      requestAnimationFrame(function () {
+        overlay.style.opacity = "0";
+      });
       setTimeout(function () {
+        G.advanceStage();
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      }, revealFadeDuration + 120);
+      }, revealFadeDuration + 40);
     }, holdDuration);
   };
 
@@ -1132,16 +1090,17 @@
 
   G.processShipDestruction = function (cause) {
     var playerShip = G.getActivePlayerShip();
-    var shipName = playerShip ? playerShip.tierData.name : "Unknown";
+    var isSuppliedRun = !!(
+      G.voyage &&
+      G.voyage.usesSuppliedShip &&
+      G.voyage.contract &&
+      typeof G.voyage.contract.suppliedShipTier === "number"
+    );
+    var shipName = G.activeShip ? G.activeShip.name : (playerShip ? playerShip.tierData.name : "Unknown");
 
-    G.player.ownedShips.splice(G.player.activeShipIdx, 1);
-    if (G.player.ownedShips.length > 0) {
-      G.player.activeShipIdx = Math.min(
-        G.player.activeShipIdx,
-        G.player.ownedShips.length - 1,
-      );
-    } else {
-      G.player.activeShipIdx = 0;
+    if (!isSuppliedRun && playerShip && playerShip.owned) {
+      playerShip.owned.hp = 0;
+      playerShip.owned.wrecked = true;
     }
 
     var survivors = [];
@@ -1191,9 +1150,13 @@
 
     G.savePlayer();
 
-    var cheapestShipCost = G.SHIP_TIERS[0].cost;
-    var isRetired =
-      G.player.ownedShips.length === 0 && G.player.bank < cheapestShipCost;
+    var hasOperableOwnedShip = G.hasOperableOwnedShip
+      ? G.hasOperableOwnedShip(G.player)
+      : false;
+    var hasFallbackContract = !!(
+      G.getPendingContract &&
+      G.getPendingContract(G.player)
+    );
 
     return {
       cause: cause,
@@ -1201,7 +1164,8 @@
       crewResults: crewResults,
       survivors: survivors,
       dead: dead,
-      isRetired: isRetired,
+      isRetired: !hasOperableOwnedShip && !hasFallbackContract,
+      isSuppliedRun: isSuppliedRun,
     };
   };
 
@@ -1211,8 +1175,8 @@
       result.cause === "mine" ? "Mine Strike!" : "Ship Destroyed!";
     document.getElementById("shipwreckCause").textContent =
       result.shipName +
-      " has been lost" +
-      (result.cause === "mine" ? " to a mine." : " in the strait.");
+      (result.isSuppliedRun ? " has been written off" : " is wrecked") +
+      (result.cause === "mine" ? " after a mine strike." : " in the strait.");
 
     var listEl = document.getElementById("shipwreckCrewList");
     listEl.innerHTML = "";
@@ -1259,15 +1223,28 @@
 
   G.onShipwreckContinue = function () {
     document.getElementById("shipwreckOverlay").classList.remove("active");
-    var cheapestShipCost = G.SHIP_TIERS[0].cost;
-    var isRetired =
-      G.player.ownedShips.length === 0 && G.player.bank < cheapestShipCost;
+    var isRetired = !(
+      (G.hasOperableOwnedShip && G.hasOperableOwnedShip(G.player)) ||
+      (G.getPendingContract && G.getPendingContract(G.player))
+    );
     if (isRetired) {
       G.showGameOver();
     } else {
       G.cumulativeScore = G.player.bank;
       if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
       G.showMenu();
+      if (
+        !_hasSeenTip("first_recovery_contract") &&
+        G.getPendingContract &&
+        G.getPendingContract(G.player) &&
+        !G.hasOperableOwnedShip(G.player)
+      ) {
+        _setTipSeen("first_recovery_contract");
+        G.showIncidentTip(
+          "Fallback Contract",
+          "Your own ship is out of action. The dock will keep posting terminal charters until you can afford repairs or buy back into the route yourself.",
+        );
+      }
     }
   };
 
@@ -1294,7 +1271,19 @@
   G.showRetreatOption = function () {
     var overlay = document.getElementById("retreatOverlay");
     if (!overlay) return;
+    var text = overlay.querySelector("p");
+    if (text) {
+      if (!_hasSeenTip("retreat_after_swimmer_loss")) {
+        text.textContent =
+          "Your mine-clearer is gone. You can retreat to port, keep the cleared water, and hire a replacement, or press on and let the ship absorb the next mistake.";
+        _setTipSeen("retreat_after_swimmer_loss");
+      } else {
+        text.textContent =
+          "Retreat to the nearest port to hire a replacement and preserve your progress, or press on without one.";
+      }
+    }
     overlay.classList.add("active");
+    G.savePlayer();
   };
 
   G.onRetreatContinue = function () {
@@ -1312,6 +1301,16 @@
     var ms = G.ms;
     ms.gameOver = true;
     clearInterval(ms.timerInterval);
+    if (
+      G.voyage &&
+      G.voyage.contract &&
+      G.voyage.contract.id &&
+      G.getMinesweeperSnapshot
+    ) {
+      _setContractProgress(G.voyage.contract.id, {
+        minesweeper: G.getMinesweeperSnapshot(),
+      });
+    }
     // Remove dead crew so player can hire replacements
     G.player.crew = G.player.crew.filter(function (m) {
       return m.alive !== false;
@@ -1355,17 +1354,9 @@
     G.showMenu();
   };
 
-  G.activeDestination = null; // legacy compat
-
-  // Legacy compat — old startRound redirects to startVoyage
-  G.startRound = function () {
-    G.startVoyage();
-  };
-
   // Called when voyage completes (all stages done) — awards cargo and starts next loop
   G.completeVoyage = function () {
     var t = G.transit;
-    var ship = G.activeShip;
     var returnStartDay =
       typeof G.voyage.departureDay === "number"
         ? G.voyage.departureDay + Math.max(1, G.voyage.outboundDays || 0)
@@ -1385,6 +1376,9 @@
 
     // roundScore and bank already updated during selling stage
     G.player.turn++;
+    if (G.voyage.contract && G.voyage.contract.id) {
+      _clearContractProgress(G.voyage.contract.id);
+    }
     G.rollMarket();
     G.player.inRun = false;
     if (G.refreshHirePoolForPort) G.refreshHirePoolForPort();
@@ -1403,15 +1397,8 @@
     G.showMenu();
   };
 
-  // Legacy compat
-  G.showScore = G.completeVoyage;
-
   G.goAgain = function () {
     document.getElementById("scoreOverlay").classList.remove("active");
-    G.showMenu();
-  };
-
-  G.continueGame = function () {
     G.showMenu();
   };
 
@@ -1567,9 +1554,8 @@
     }
   };
 
-  var origSetStatus = G.setStatus;
   G.setStatus = function (text, className) {
-    origSetStatus(text, className);
+    setStatusBar(text, className);
     G.updateTransitControls();
   };
 
@@ -1607,6 +1593,7 @@
   ) {
     options = options || {};
     sailLabel = sailLabel || "Set Sail";
+    var repairShip = options.repairShip || (playerShip && !playerShip.isSupplied ? playerShip : null);
     var html = '<div class="stage-actions">';
     var sailDisabled = disabled || !G.hasCrewRole("Captain");
     html +=
@@ -1618,9 +1605,9 @@
       sailLabel +
       "</button>";
     html += '<div class="stage-secondary-actions">';
-    if (playerShip) {
-      var needsRepair = playerShip.hp < playerShip.maxHp;
-      var repairCost = needsRepair ? G.getRepairCost(playerShip) : 0;
+    if (repairShip) {
+      var needsRepair = repairShip.hp < repairShip.maxHp;
+      var repairCost = needsRepair ? G.getRepairCost(repairShip) : 0;
       var canRepair = needsRepair && !disabled && G.player.bank >= repairCost;
       html +=
         '<button class="stage-repair-btn' +
@@ -1630,6 +1617,8 @@
         '">';
       html += needsRepair ? "🔧 " + G.formatMoney(repairCost) : "🔧 Repair";
       html += "</button>";
+    }
+    if (playerShip && !playerShip.isSupplied) {
       if (options.showShip !== false && _hasShipUpgrades(playerShip)) {
         html +=
           '<button class="stage-ship-btn' +
@@ -1665,6 +1654,7 @@
         hasUpgrades = true;
       }
       var canAfford = !disabled && G.player.bank >= s.cost;
+      if (s.purchasable === false) continue;
       html +=
         '<div class="stage-ship-upgrade' +
         (canAfford ? "" : " disabled") +
@@ -1711,7 +1701,7 @@
     var tierData = G.getShipTier(tier);
     if (!tierData || G.player.bank < tierData.cost) return false;
     G.player.bank -= tierData.cost;
-    G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp });
+    G.player.ownedShips.push({ tier: tierData.tier, hp: tierData.hp, wrecked: false });
     G.player.activeShipIdx = G.player.ownedShips.length - 1;
     G.savePlayer();
     return true;
@@ -1764,38 +1754,75 @@
     }
 
     var playerShip = G.getActivePlayerShip();
+    var sailablePlayerShip = G.getSailablePlayerShip();
+    var voyageShip = sailablePlayerShip || playerShip;
+    if (
+      stage &&
+      v.usesSuppliedShip &&
+      v.contract &&
+      typeof v.contract.suppliedShipTier === "number"
+    ) {
+      var suppliedTierData = G.getShipTier(v.contract.suppliedShipTier);
+      if (suppliedTierData) {
+        voyageShip = {
+          tierData: suppliedTierData,
+          hp: suppliedTierData.hp,
+          maxHp: suppliedTierData.hp,
+          owned: null,
+          isSupplied: true,
+        };
+      }
+    }
     var html = "";
     var isCompactLayout = !!(stage && stage.auto);
     var cargoValue = G.activeShip
       ? G.activeShip.cargoValue
-      : playerShip
-        ? playerShip.tierData.cargoValue
+      : voyageShip
+        ? voyageShip.tierData.cargoValue
         : 0;
-    var cargoCapacity = playerShip
-      ? _getCargoCapacityBarrels(playerShip.tierData)
+    var cargoCapacity = voyageShip
+      ? _getCargoCapacityBarrels(voyageShip.tierData)
       : 0;
-    var cargoCapacityText = playerShip
+    var cargoCapacityText = voyageShip
       ? _formatBarrels(cargoCapacity)
       : "No ship";
 
     if (!stage) {
       // At port, no voyage started
-      html += _buildPortHeader("Persian Gulf", G.player.latestBulletin);
+      var pendingContract = G.getPendingContract ? G.getPendingContract(G.player) : null;
+      var pendingShipTier = pendingContract ? G.getContractShipTier(pendingContract) : null;
+      var cardShip =
+        sailablePlayerShip ||
+        (pendingShipTier != null
+          ? {
+              tierData: G.getShipTier(pendingShipTier),
+              hp: G.getShipTier(pendingShipTier).hp,
+              maxHp: G.getShipTier(pendingShipTier).hp,
+              owned: null,
+              isSupplied: true,
+            }
+          : playerShip);
+      html += _buildPortHeader(
+        (G.getHomePortName ? G.getHomePortName(G.player) : "Persian Gulf"),
+        G.player.latestBulletin,
+      );
       html += '<div class="stage-card-body">';
       if (playerShip && G.portUpgradesOpen && _hasShipUpgrades(playerShip)) {
         // Ships tab — replace body with upgrade list
         html += _buildShipUpgrades(playerShip, v.loading);
-      } else if (playerShip) {
+      } else if (cardShip) {
+        html += _buildContractPanel(pendingContract);
         html += _buildPortEventsBlock(G.player.latestBulletin);
         var loadedPct = Math.round(G.voyage.oilPct || 0);
-        var loadedBarrels = (cargoCapacity * loadedPct) / 100;
-        var fullLoadCost = G.getCargoPurchaseCost(playerShip.tierData);
+        var localCapacity = _getCargoCapacityBarrels(cardShip.tierData);
+        var loadedBarrels = (localCapacity * loadedPct) / 100;
+        var fullLoadCost = pendingContract ? 0 : G.getCargoPurchaseCost(cardShip.tierData);
         html += _buildCargoSummary({
-          priceText: "$" + G.getCurrentBuyPrice() + "/bbl",
-          transferLabel: "Loaded",
+          priceText: pendingContract ? "Cargo supplied" : "$" + G.getCurrentBuyPrice() + "/bbl",
+          transferLabel: pendingContract ? "Contract load" : "Loaded",
           transferText:
-            _formatBarrels(loadedBarrels) + " / " + cargoCapacityText,
-          totalLabel: "Full load cost",
+            _formatBarrels(loadedBarrels) + " / " + _formatBarrels(localCapacity),
+          totalLabel: pendingContract ? "Upfront cost" : "Full load cost",
           totalText: G.formatMoney(fullLoadCost),
         });
       } else {
@@ -1804,6 +1831,7 @@
           '<div class="stage-detail" style="color:var(--dock-text-muted)">You need a ship to set sail.</div>';
         for (var si = 0; si < G.SHIP_TIERS.length; si++) {
           var s = G.SHIP_TIERS[si];
+          if (s.purchasable === false) continue;
           var canAfford = G.player.bank >= s.cost;
           html +=
             '<div class="stage-ship-upgrade' +
@@ -1829,21 +1857,40 @@
         }
       }
       html += '</div>';
-      if (playerShip) {
-        var cargoAffordable = G.getAffordableLoadRatio(playerShip.tierData) > 0;
+      if (cardShip) {
+        var cargoAffordable = pendingContract
+          ? true
+          : G.getAffordableLoadRatio(cardShip.tierData) > 0;
+        var shipUnavailable = !!(
+          playerShip &&
+          playerShip.owned &&
+          !G.isOwnedShipOperable(playerShip.owned) &&
+          !pendingContract
+        );
+        if (
+          playerShip &&
+          playerShip.owned &&
+          !G.isOwnedShipOperable(playerShip.owned)
+        ) {
+          html +=
+            '<div class="stage-detail" style="color:var(--dock-text-muted)">Your ship is wrecked. Repair it or take supplied work until you can afford the yard bill.</div>';
+        }
         html += _buildPortActions(
-          playerShip,
-          "loadCargoAndSail()",
-          v.loading ? "Loading…" : "Load & Sail",
-          v.loading || !cargoAffordable,
-          { showShip: true },
+          cardShip,
+          pendingContract ? "beginPendingContract()" : "loadCargoAndSail()",
+          pendingContract ? "Start Contract" : v.loading ? "Loading…" : "Load & Sail",
+          v.loading || !cargoAffordable || shipUnavailable,
+          {
+            showShip: !pendingContract,
+            repairShip: playerShip && playerShip.owned ? playerShip : null,
+          },
         );
       }
     } else if (stage.id === "manage_port") {
       html += _buildPortHeader(v.port || "Port", v.portBulletin);
       html += '<div class="stage-card-body">';
       html += _buildPortEventsBlock(v.portBulletin);
-      if (playerShip) {
+      if (voyageShip) {
         var saleStartPct = Math.max(
           0,
           Math.min(100, Math.round(v.saleStartPct || 0)),
@@ -1853,7 +1900,7 @@
         var loadedBarrels = (cargoCapacity * saleStartPct) / 100;
         var soldBarrels = (cargoCapacity * soldPct) / 100;
         var totalSaleValue =
-          v.saleValue || G.getCargoSaleValue(playerShip.tierData);
+          v.saleValue || G.getCargoSaleValue(voyageShip.tierData);
         var soldValue =
           saleStartPct > 0
             ? Math.round(totalSaleValue * (soldPct / saleStartPct))
@@ -1887,9 +1934,9 @@
         });
       }
       html += '</div>';
-      if (playerShip) {
+      if (voyageShip) {
         html += _buildPortActions(
-          playerShip,
+          voyageShip,
           "continueVoyage()",
           "Sail Home",
           v.selling !== "done",
@@ -1916,6 +1963,7 @@
   };
 
   G.syncTransitHpToActiveShip = function () {
+    if (G.voyage && G.voyage.usesSuppliedShip) return;
     var playerShip = G.getActivePlayerShip();
     if (!playerShip) return;
     if (typeof G.transit.hp !== "number") return;
@@ -1923,6 +1971,7 @@
   };
 
   G.syncActiveShipHpToTransit = function () {
+    if (G.voyage && G.voyage.usesSuppliedShip) return;
     var playerShip = G.getActivePlayerShip();
     if (!playerShip) return;
     G.transit.hp = playerShip.owned.hp;
@@ -1946,6 +1995,7 @@
     if (G.player.bank < cost) return;
     G.player.bank -= cost;
     playerShip.owned.hp = playerShip.maxHp;
+    playerShip.owned.wrecked = false;
     G.syncActiveShipHpToTransit();
     G.savePlayer();
     document.getElementById("menuBankBalance").textContent = G.formatMoney(
@@ -1986,7 +2036,7 @@
       return { label: "" };
     }
     if (G.state === "MINESWEEPER") {
-      if (role === "Swimmer")
+      if (role === "Swimmer" || role === "Sonar")
         return { label: "In the water", className: "deployed" };
       if (role === "Captain") {
         if (G.ms && G.ms.gameWon) return { label: "Plotting" };
@@ -2043,6 +2093,7 @@
 
   function _getCrewSlotHeaderLabel(role) {
     if (role === "Shotgunner") return "Shotgun";
+    if (role === "Coffee Boy") return "Coffee";
     return role;
   }
 
@@ -2064,8 +2115,17 @@
         G.voyage.stages[G.voyage.stageIdx].id === "manage_port");
 
     var playerShip = G.getActivePlayerShip();
-    if (!playerShip) return;
-    var slots = playerShip.tierData.crewSlots;
+    var shipData = playerShip ? playerShip.tierData : null;
+    if (!shipData && G.voyage && G.voyage.usesSuppliedShip && G.activeShip) {
+      shipData = G.activeShip;
+    }
+    if (!shipData && isMenu && G.getPendingContract && G.getContractShipTier) {
+      var pendingContract = G.getPendingContract(G.player);
+      var pendingShipTier = pendingContract ? G.getContractShipTier(pendingContract) : null;
+      if (pendingShipTier != null) shipData = G.getShipTier(pendingShipTier);
+    }
+    if (!shipData) return;
+    var slots = shipData.crewSlots;
 
     for (var i = 0; i < slots.length; i++) {
       (function (role) {
@@ -2185,9 +2245,6 @@
   // Expose for HTML onclick
   window.newGame = G.newGame;
   window.showHelp = G.showHelp;
-  window.startRound = function () {
-    G.startVoyage();
-  };
   window.startTestMode = function () {
     G.startTestMode();
   };
@@ -2196,9 +2253,6 @@
   };
   window.cashOut = function () {
     G.cashOut();
-  };
-  window.continueGame = function () {
-    G.continueGame();
   };
   window.toggleMute = function () {
     G.toggleMute();
@@ -2214,6 +2268,9 @@
   };
   window.onRetreatContinue = function () {
     G.onRetreatContinue();
+  };
+  window.closeIncidentTip = function () {
+    G.closeIncidentTip();
   };
   window.onGameOverRestart = function () {
     G.onGameOverRestart();

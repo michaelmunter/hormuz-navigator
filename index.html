@@ -63,8 +63,8 @@
         flex-shrink: 0;
         opacity: 0.17;
         background-color: rgba(58,46,28,0.9);
-        mask-image: url('various/ship-chevron.svg');
-        -webkit-mask-image: url('various/ship-chevron.svg');
+        mask-image: url('sprites/ui/ship-chevron.svg');
+        -webkit-mask-image: url('sprites/ui/ship-chevron.svg');
         mask-repeat: no-repeat;
         -webkit-mask-repeat: no-repeat;
         mask-position: center;
@@ -124,12 +124,12 @@
         -webkit-mask-size: contain;
       }
       .utility-sound-glyph.sound-on {
-        mask-image: url('various/soundon.svg');
-        -webkit-mask-image: url('various/soundon.svg');
+        mask-image: url('sprites/ui/soundon.svg');
+        -webkit-mask-image: url('sprites/ui/soundon.svg');
       }
       .utility-sound-glyph.sound-off {
-        mask-image: url('various/soundoff.svg');
-        -webkit-mask-image: url('various/soundoff.svg');
+        mask-image: url('sprites/ui/soundoff.svg');
+        -webkit-mask-image: url('sprites/ui/soundoff.svg');
       }
       .utility-help-glyph {
         font-size: 18px;
@@ -722,8 +722,8 @@
         width: 14px;
         height: 14px;
         background-color: currentColor;
-        mask-image: url('various/ship.svg');
-        -webkit-mask-image: url('various/ship.svg');
+        mask-image: url('sprites/ui/ship.svg');
+        -webkit-mask-image: url('sprites/ui/ship.svg');
         mask-repeat: no-repeat;
         -webkit-mask-repeat: no-repeat;
         mask-position: center;
@@ -828,8 +828,8 @@
         justify-self: center;
       }
       .ship-panel-icon.ship-icon {
-        mask-image: url('various/ship.svg');
-        -webkit-mask-image: url('various/ship.svg');
+        mask-image: url('sprites/ui/ship.svg');
+        -webkit-mask-image: url('sprites/ui/ship.svg');
       }
       .ship-panel-class {
         font-size: 11px;
@@ -852,8 +852,8 @@
         width: 11px;
         height: 11px;
         background-color: var(--dock-text);
-        mask-image: url('various/oil.svg');
-        -webkit-mask-image: url('various/oil.svg');
+        mask-image: url('sprites/ui/oil.svg');
+        -webkit-mask-image: url('sprites/ui/oil.svg');
         mask-repeat: no-repeat;
         -webkit-mask-repeat: no-repeat;
         mask-position: center;
@@ -1429,6 +1429,17 @@
       </div>
     </div>
 
+    <!-- Incident tip -->
+    <div class="modal-overlay" id="incidentTipOverlay">
+      <div class="modal" style="max-width:420px">
+        <h2 id="incidentTipTitle">Incident</h2>
+        <p id="incidentTipBody"></p>
+        <div class="score-actions">
+          <button class="action-btn" onclick="closeIncidentTip()">Continue</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Game over -->
     <div class="modal-overlay" id="gameOverOverlay">
       <div class="modal">
@@ -1483,7 +1494,9 @@
     <script src="js/ships.js"></script>
     <script src="js/roles.js"></script>
     <script src="js/crew.js"></script>
+    <script src="js/locations.js"></script>
     <script src="js/worldmap.js"></script>
+    <script src="js/campaign.js"></script>
     <script src="js/news.js"></script>
     <script src="js/dock.js"></script>
     <script src="js/renderer.js"></script>
