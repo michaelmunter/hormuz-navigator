@@ -93,10 +93,25 @@
     return G.getVoyageDeparturePortName('forward');
   };
 
-  G.getPortCameraCrop = function () {
+  G.getPortBoardCrop = function () {
     var portName = G.getMapFocusPortName ? G.getMapFocusPortName() : null;
     var port = G.getPortByName ? G.getPortByName(portName) : null;
-    return port && port.camera ? port.camera : null;
+    if (!port) return null;
+    return port.boardCrop || port.camera || null;
+  };
+
+  // Backward-compatible alias while data moves from "camera" to "boardCrop".
+  G.getPortCameraCrop = function () {
+    return G.getPortBoardCrop ? G.getPortBoardCrop() : null;
+  };
+
+  G.getPortViewportFraming = function () {
+    var portName = G.getMapFocusPortName ? G.getMapFocusPortName() : null;
+    var port = G.getPortByName ? G.getPortByName(portName) : null;
+    return {
+      panX: port && port.framing && typeof port.framing.panX === 'number' ? port.framing.panX : 0,
+      panY: port && port.framing && typeof port.framing.panY === 'number' ? port.framing.panY : 0
+    };
   };
 
   G.getHighlightedPorts = function () {
